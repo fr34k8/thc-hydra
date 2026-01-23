@@ -1,5 +1,12 @@
 #include "hydra-mod.h"
+#include "hydra-telnet.h"
 #include <ctype.h>
+
+char *telcmds[] = {
+  "EOF", "SUSP", "ABORT", "EOR",
+  "SE", "NOP", "DMARK", "BRK", "IP", "AO", "AYT", "EC",
+  "EL", "GA", "SB", "WILL", "WONT", "DO", "DONT", "IAC", 0,
+};
 
 extern char *HYDRA_EXIT;
 char *buf;
