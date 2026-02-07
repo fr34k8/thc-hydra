@@ -1158,9 +1158,9 @@ void fill_mem(char *ptr, FILE *fd, int32_t colonmode) {
     }
   }
 #ifdef HAVE_ZLIB
-  gzclose(fp);
+  if (fp != Z_NULL) gzclose(fp);
 #else
-  fclose(fp);
+  if (fp) fclose(fp);
 #endif
 }
 
