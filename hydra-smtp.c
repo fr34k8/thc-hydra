@@ -104,7 +104,12 @@ int32_t start_smtp(int32_t s, char *ip, int32_t port, unsigned char options, cha
       return 3;
     }
     memset(buffer, 0, sizeof(buffer));
-    from64tobits((char *)buffer, buf + 4);
+    if (from64tobits_n((char *)buffer, buf + 4, sizeof(buffer)) < 0) {
+      hydra_report(stderr, "[ERROR] SMTP CRAM-MD5 AUTH: oversized challenge\n");
+      free(buf);
+      free(preplogin);
+      return 3;
+    }
     free(buf);
 
     memset(buffer2, 0, sizeof(buffer2));
@@ -136,7 +141,11 @@ int32_t start_smtp(int32_t s, char *ip, int32_t port, unsigned char options, cha
       return 3;
     }
     memset(buffer, 0, sizeof(buffer));
-    from64tobits((char *)buffer, buf + 4);
+    if (from64tobits_n((char *)buffer, buf + 4, sizeof(buffer)) < 0) {
+      hydra_report(stderr, "[ERROR] SMTP DIGEST-MD5 AUTH: oversized challenge\n");
+      free(buf);
+      return 3;
+    }
     free(buf);
 
     if (debug)
@@ -173,7 +182,11 @@ int32_t start_smtp(int32_t s, char *ip, int32_t port, unsigned char options, cha
       return 3;
     }
     // recover challenge
-    from64tobits((char *)buf1, buf + 4);
+    if (from64tobits_n((char *)buf1, buf + 4, sizeof(buf1)) < 0) {
+      hydra_report(stderr, "[ERROR] SMTP NTLM AUTH: oversized challenge\n");
+      free(buf);
+      return 3;
+    }
     free(buf);
 
     buildAuthResponse((tSmbNtlmAuthChallenge *)buf1, (tSmbNtlmAuthResponse *)buf2, 0, login, pass, NULL, NULL);
@@ -231,7 +244,10 @@ int32_t start_smtp(int32_t s, char *ip, int32_t port, unsigned char options, cha
   if (smtp_auth_mechanism == AUTH_DIGESTMD5) {
     if (strstr(buf, "334") != NULL && strlen(buf) >= 8) {
       memset(buffer2, 0, sizeof(buffer2));
-      from64tobits((char *)buffer2, buf + 4);
+      if (from64tobits_n((char *)buffer2, buf + 4, sizeof(buffer2)) < 0) {
+        free(buf);
+        return 3;
+      }
       if (strstr(buffer2, "rspauth=") != NULL) {
         hydra_report_found_host(port, ip, "smtp", fp);
         hydra_completed_pair_found();

@@ -140,6 +140,7 @@ void buildAuthResponse(tSmbNtlmAuthChallenge *challenge, tSmbNtlmAuthResponse *r
 
 /* Base64 code*/
 int32_t from64tobits(char *out, const char *in);
+int32_t from64tobits_n(char *out, const char *in, int32_t outlen);
 void to64frombits(unsigned char *out, const unsigned char *in, int32_t inlen);
 
 void xor (char *out, char *in1, char *in2, int32_t n);

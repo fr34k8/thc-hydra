@@ -258,7 +258,11 @@ int32_t start_pop3(int32_t s, char *ip, int32_t port, unsigned char options, cha
     }
 
     memset(buffer, 0, sizeof(buffer));
-    from64tobits((char *)buffer, buf + 2);
+    if (from64tobits_n((char *)buffer, buf + 2, sizeof(buffer)) < 0) {
+      hydra_report(stderr, "[ERROR] POP3 CRAM-* AUTH: oversized challenge\n");
+      free(buf);
+      return 3;
+    }
     free(buf);
 
     memset(buffer2, 0, sizeof(buffer2));
@@ -305,7 +309,11 @@ int32_t start_pop3(int32_t s, char *ip, int32_t port, unsigned char options, cha
       return 3;
     }
     memset(buffer, 0, sizeof(buffer));
-    from64tobits((char *)buffer, buf);
+    if (from64tobits_n((char *)buffer, buf, sizeof(buffer)) < 0) {
+      hydra_report(stderr, "[ERROR] POP3 DIGEST-MD5 AUTH: oversized challenge\n");
+      free(buf);
+      return 3;
+    }
     free(buf);
 
     if (debug)
@@ -353,7 +361,11 @@ int32_t start_pop3(int32_t s, char *ip, int32_t port, unsigned char options, cha
       return 4;
 
     // recover challenge
-    from64tobits((char *)buf1, buf + 2);
+    if (from64tobits_n((char *)buf1, buf + 2, sizeof(buf1)) < 0) {
+      hydra_report(stderr, "[ERROR] POP3 NTLM AUTH: oversized challenge\n");
+      free(buf);
+      return 3;
+    }
     free(buf);
 
     // Send response

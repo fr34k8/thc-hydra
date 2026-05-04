@@ -156,7 +156,12 @@ int32_t start_imap(int32_t s, char *ip, int32_t port, unsigned char options, cha
     }
 
     memset(buffer, 0, sizeof(buffer));
-    from64tobits((char *)buffer, buf + 2);
+    if (from64tobits_n((char *)buffer, buf + 2, sizeof(buffer)) < 0) {
+      hydra_report(stderr, "[ERROR] IMAP CRAM-* AUTH: oversized challenge\n");
+      free(buf);
+      free(preplogin);
+      return 3;
+    }
     free(buf);
 
     memset(buffer2, 0, sizeof(buffer2));
@@ -203,7 +208,11 @@ int32_t start_imap(int32_t s, char *ip, int32_t port, unsigned char options, cha
       return 3;
     }
     memset(buffer, 0, sizeof(buffer));
-    from64tobits((char *)buffer, buf);
+    if (from64tobits_n((char *)buffer, buf, sizeof(buffer)) < 0) {
+      hydra_report(stderr, "[ERROR] IMAP DIGEST-MD5 AUTH: oversized challenge\n");
+      free(buf);
+      return 3;
+    }
     free(buf);
 
     if (debug)
@@ -263,7 +272,11 @@ int32_t start_imap(int32_t s, char *ip, int32_t port, unsigned char options, cha
       /* recover server challenge */
       memset(buffer, 0, sizeof(buffer));
       //+ cj1oeWRyYU9VNVZqcHQ5RjNqcmVXRVFWTCxzPWhGbTNnRGw0akdidzJVVHosaT00MDk2
-      from64tobits((char *)buffer, buf + 2);
+      if (from64tobits_n((char *)buffer, buf + 2, sizeof(buffer)) < 0) {
+        hydra_report(stderr, "[ERROR] IMAP SCRAM-SHA1 AUTH: oversized challenge\n");
+        free(buf);
+        return 1;
+      }
       free(buf);
       strncpy(serverfirstmessage, buffer, sizeof(serverfirstmessage) - 1);
       serverfirstmessage[sizeof(serverfirstmessage) - 1] = '\0';
@@ -314,7 +327,11 @@ int32_t start_imap(int32_t s, char *ip, int32_t port, unsigned char options, cha
     }
 
     // recover challenge
-    from64tobits((char *)buf1, buf + 2);
+    if (from64tobits_n((char *)buf1, buf + 2, sizeof(buf1)) < 0) {
+      hydra_report(stderr, "[ERROR] IMAP NTLM AUTH: oversized challenge\n");
+      free(buf);
+      return 3;
+    }
     free(buf);
 
     // Send response

@@ -1369,12 +1369,16 @@ void to64frombits(unsigned char *out, const unsigned char *in, int32_t inlen)
   *out = '\0';
 }
 
-int32_t from64tobits(char *out, const char *in)
-
-/* base 64 to raw bytes in quasi-big-endian order, returning count of bytes */
+/* base 64 to raw bytes in quasi-big-endian order. outlen is the size of the
+ * out buffer; decoding stops without writing past out[outlen-1] and returns -1
+ * if the input would have produced more than outlen bytes. */
+int32_t from64tobits_n(char *out, const char *in, int32_t outlen)
 {
   int32_t len = 0;
   register unsigned char digit1, digit2, digit3, digit4;
+
+  if (outlen <= 0)
+    return (-1);
 
   if (in[0] == '+' && in[1] == ' ')
     in += 2;
@@ -1395,12 +1399,18 @@ int32_t from64tobits(char *out, const char *in)
     if (digit4 != '=' && DECODE64(digit4) == BAD)
       return (-1);
     in += 4;
+    if (len >= outlen)
+      return (-1);
     *out++ = (DECODE64(digit1) << 2) | (DECODE64(digit2) >> 4);
     ++len;
     if (digit3 != '=') {
+      if (len >= outlen)
+        return (-1);
       *out++ = ((DECODE64(digit2) << 4) & 0xf0) | (DECODE64(digit3) >> 2);
       ++len;
       if (digit4 != '=') {
+        if (len >= outlen)
+          return (-1);
         *out++ = ((DECODE64(digit3) << 6) & 0xc0) | DECODE64(digit4);
         ++len;
       }
@@ -1408,6 +1418,12 @@ int32_t from64tobits(char *out, const char *in)
   } while (*in && *in != '\r' && digit4 != '=');
 
   return (len);
+}
+
+/* legacy unbounded wrapper; new code should use from64tobits_n() */
+int32_t from64tobits(char *out, const char *in)
+{
+  return from64tobits_n(out, in, INT32_MAX);
 }
 
 /* base64.c ends here */

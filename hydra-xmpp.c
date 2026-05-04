@@ -72,7 +72,11 @@ int32_t start_xmpp(int32_t s, char *ip, int32_t port, unsigned char options, cha
       strncpy(buffer2, ptr + strlen(CHALLENGE_STR), chglen);
       buffer2[chglen] = '\0';
       memset(buffer, 0, sizeof(buffer));
-      from64tobits((char *)buffer, buffer2);
+      if (from64tobits_n((char *)buffer, buffer2, sizeof(buffer)) < 0) {
+        hydra_report(stderr, "[ERROR] XMPP: oversized challenge\n");
+        free(buf);
+        return 1;
+      }
       if (debug)
         hydra_report(stderr, "DEBUG S: %s\n", buffer);
     }
@@ -107,7 +111,11 @@ int32_t start_xmpp(int32_t s, char *ip, int32_t port, unsigned char options, cha
             strncpy(buffer2, ptr + strlen(CHALLENGE_STR), chglen);
             buffer2[chglen] = '\0';
             memset(buffer, 0, sizeof(buffer));
-            from64tobits((char *)buffer, buffer2);
+            if (from64tobits_n((char *)buffer, buffer2, sizeof(buffer)) < 0) {
+              hydra_report(stderr, "[ERROR] XMPP: oversized challenge\n");
+              free(buf);
+              return 1;
+            }
             if (strstr(buffer, "assword") != NULL) {
               strncpy(buffer2, pass, sizeof(buffer2) - 1);
               buffer2[sizeof(buffer2) - 1] = '\0';
@@ -215,7 +223,11 @@ int32_t start_xmpp(int32_t s, char *ip, int32_t port, unsigned char options, cha
 
         /*server-first-message */
         memset(buffer, 0, sizeof(buffer));
-        from64tobits((char *)buffer, buffer2);
+        if (from64tobits_n((char *)buffer, buffer2, sizeof(buffer)) < 0) {
+          hydra_report(stderr, "[ERROR] XMPP SCRAM-SHA1: oversized challenge\n");
+          free(buf);
+          return 1;
+        }
         strncpy(serverfirstmessage, buffer, sizeof(serverfirstmessage) - 1);
         serverfirstmessage[sizeof(serverfirstmessage) - 1] = '\0';
 

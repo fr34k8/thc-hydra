@@ -151,8 +151,13 @@ int32_t start_http_proxy(int32_t s, char *ip, int32_t port, unsigned char option
         }
       }
       // recover challenge
-      if (http_proxy_buf != NULL && strlen(http_proxy_buf) >= 4) {
-        from64tobits((char *)buf1, pos);
+      if (http_proxy_buf != NULL && pos != NULL && strlen(http_proxy_buf) >= 4) {
+        if (from64tobits_n((char *)buf1, pos, sizeof(buf1)) < 0) {
+          hydra_report(stderr, "[ERROR] HTTP-PROXY NTLM AUTH: oversized challenge\n");
+          free(http_proxy_buf);
+          http_proxy_buf = NULL;
+          return 3;
+        }
         free(http_proxy_buf);
         http_proxy_buf = NULL;
       } else {
