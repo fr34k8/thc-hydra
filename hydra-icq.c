@@ -62,6 +62,12 @@ int32_t icq_login(int32_t s, char *login, char *pass) {
 
   icq_header(buf, 0x03e8, uin);
   len = strlen(pass) + 1;
+  /* buf[14] is a single-byte length field; the highest write below is
+   * buf[41 + len]. */
+  if (len > 255 || len + 42 >= (int32_t)sizeof(buf)) {
+    hydra_completed_pair_skip();
+    return -1;
+  }
   buf[14] = len;
   memcpy(&buf[16], pass, len);
   buf[16 + len] = 0x78;

@@ -72,9 +72,10 @@ int32_t start_svn(int32_t s, char *ip, int32_t port, unsigned char options, char
   apr_array_header_t *providers;
 
   if (miscptr)
-    strncpy(URLBRANCH, miscptr, sizeof(URLBRANCH));
+    strncpy(URLBRANCH, miscptr, sizeof(URLBRANCH) - 1);
   else
-    strncpy(URLBRANCH, DEFAULT_BRANCH, sizeof(URLBRANCH));
+    strncpy(URLBRANCH, DEFAULT_BRANCH, sizeof(URLBRANCH) - 1);
+  URLBRANCH[sizeof(URLBRANCH) - 1] = 0;
 
   if (svn_cmdline_init("hydra", stderr) != EXIT_SUCCESS)
     return 4;
@@ -230,6 +231,11 @@ int32_t service_svn_init(char *ip, int32_t sp, unsigned char options, char *misc
   //   -1  error, hydra will exit, so print a good error message here
 
 #ifdef LIBSVN
+  /* URLBRANCH is sized 256; cap miscptr accordingly. */
+  if (miscptr != NULL && strlen(miscptr) >= 255) {
+    hydra_report(stderr, "[ERROR] svn miscptr (-m) must be < 255 bytes\n");
+    return -1;
+  }
   if (verbose)
     hydra_report(stderr, "[VERBOSE] detected subversion library v%d.%d\n", SVN_VER_MAJOR, SVN_VER_MINOR);
   if (SVN_VER_MAJOR != 1 && SVN_VER_MINOR >= 5) {

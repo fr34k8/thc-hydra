@@ -41,6 +41,11 @@ int32_t start_postgres(int32_t s, char *ip, int32_t port, unsigned char options,
    *      Building the connection string
    */
 
+  /* a single-quote in login/pass would inject extra libpq parameters. */
+  if (strchr(login, '\'') != NULL || strchr(pass, '\'') != NULL) {
+    hydra_completed_pair_skip();
+    return 2;
+  }
   snprintf(connection_string, sizeof(connection_string), "host = '%s' port = '%d' dbname = '%s' user = '%s' password = '%s' ", hydra_address2string(ip), port, database, login, pass);
 
   if (verbose)

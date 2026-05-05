@@ -28,10 +28,9 @@ char *nntp_read_server_capacity(int32_t sock) {
       if (isdigit((int32_t)buf[0]) && buf[3] == ' ')
         resp = 1;
       else {
-        if (buf[strlen(buf) - 1] == '\n')
-          buf[strlen(buf) - 1] = 0;
-        if (buf[strlen(buf) - 1] == '\r')
-          buf[strlen(buf) - 1] = 0;
+        size_t blen = strlen(buf);
+        while (blen > 0 && (buf[blen - 1] == '\n' || buf[blen - 1] == '\r'))
+          buf[--blen] = 0;
 #ifdef NO_STRRCHR
         if ((ptr = rindex(buf, '\n')) != NULL) {
 #else

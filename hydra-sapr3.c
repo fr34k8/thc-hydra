@@ -45,6 +45,14 @@ int32_t start_sapr3(int32_t s, char *ip, int32_t port, unsigned char options, ch
   memset(buffer, 0, sizeof(buffer));
   memset(&error_info, 0, sizeof(error_info));
 
+  /* quotes in login/pass would inject extra connection-string parameters
+   * (e.g. ASHOST=attacker.example) via the format below. */
+  if (strchr(login, '"') != NULL || strchr(pass, '"') != NULL ||
+      strchr(login, '\'') != NULL || strchr(pass, '\'') != NULL) {
+    hydra_completed_pair_skip();
+    return 1;
+  }
+
   // strcpy(buf, "mvse001");
   snprintf(buffer, sizeof(buffer), "ASHOST=%s SYSNR=%02d CLIENT=%03d USER=\"%s\" PASSWD=\"%s\" LANG=DE %s", hydra_address2string(ip), sysnr, atoi(miscptr), login, pass, opts);
 
@@ -94,6 +102,11 @@ void service_sapr3(char *ip, int32_t sp, unsigned char options, char *miscptr, F
   int32_t run = 1, next_run = 1, sock = -1;
 
   hydra_register_socket(sp);
+  /* start_sapr3 calls atoi(miscptr); -m is mandatory for this module. */
+  if (miscptr == NULL) {
+    fprintf(stderr, "[ERROR] sapr3 requires the client id via -m\n");
+    hydra_child_exit(2);
+  }
   if (memcmp(hydra_get_next_pair(), &HYDRA_EXIT, sizeof(HYDRA_EXIT)) == 0)
     return;
   while (1) {

@@ -23,6 +23,10 @@ int32_t start_rlogin(int32_t s, char *ip, int32_t port, unsigned char options, c
     pass = empty;
 
   memset(buffer2, 0, sizeof(buffer2));
+  if (1 + strlen(login) + 1 + strlen(login) + 1 + strlen(TERM) + 1 > sizeof(buffer2)) {
+    hydra_completed_pair_skip();
+    return 4;
+  }
   bptr++;
 
   strcpy(bptr, login);
@@ -57,7 +61,9 @@ int32_t start_rlogin(int32_t s, char *ip, int32_t port, unsigned char options, c
       return 1;
     }
     memset(buffer, 0, sizeof(buffer));
-    ret = hydra_recv(s, buffer, sizeof(buffer));
+    /* hydra_recv does not NUL-terminate; force it before the strcmp. */
+    ret = hydra_recv(s, buffer, sizeof(buffer) - 1);
+    if (ret > 0) buffer[ret] = 0;
     if (strcmp(buffer, "\r\n"))
       if ((ret = hydra_recv(s, buffer, sizeof(buffer) - 1)) > 0)
         buffer[ret] = 0;

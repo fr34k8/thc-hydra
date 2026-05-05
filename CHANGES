@@ -2,6 +2,55 @@ Changelog for hydra
 -------------------
 
 Release 9.8-dev
+* security fixes:
+  - hydra.restore deserialization: validate ownership, clamp length/count/
+    offset fields before driving malloc and loop bounds
+  - parent IPC: NUL-terminate after read_safe to stop strcpy past the stack
+    buffer (CodeQL cpp-unbounded-write)
+  - hydra.restore / segment / -o output files: open 0600 with O_NOFOLLOW;
+    segment file uses mkstemps
+  - signal handlers: replace exit with async-signal-safe _exit 
+  - argv parser: -W and -T reject negative values; refuse -t > 30 on
+    Cygwin per the long-documented stack-smash issue
+  - HYDRA_PROXY parsing: fe80 link-local check now tests the resolved
+    address rather than the previous proxy-table entry 
+  - module overflows fixed: ICQ icq_login, IRC OPER sprintf
+   , rlogin/rsh/rexec buffer2, telnet IAC walk
+   , SMB1 SMBSessionSetup login bound + szOSName sizeof
+   , NCP password, PCNFS encoded loops,
+    pcAnywhere clogin/cpass, AFP servername off-by-one
+   , SNMP password_to_key_sha, LDAP simple-bind
+   , SOCKS5 length bytes, Oracle-listener VLA 
+  - NULL-deref hardening for hydra_receive_line callers: POP3 STLS/NTLM,
+    SMTP STARTTLS, HTTP DIGEST, HTTP-proxy
+    strchr, rpcap/mongodb/memcached/asterisk/cisco-enable/cvs/
+    redis/svn, SAPR3 missing -m, SIP get_iface_ip 
+  - HTTP-form: clear cookie jar and drop operator-supplied Authorization
+    header on cross-host redirect; skip pair on hydra_strrep
+    overflow rather than crash; cap urlpath_extracted strncpy
+   ; apply PCRE2 match_limit/depth_limit 
+  - NTLM: NDEBUG-disabled assertions replaced with runtime caps in
+    unicodeToString/strToUnicode/toString; challenge-offset
+    bounds in GetUnicodeString/GetString/DumpBuffer macros to refuse
+    server-controlled offsets > 4096 
+  - SMB1 short-reply uninit-stack: zero buffer and require >=42 bytes
+    before reading the response code 
+  - target-spoof success-indicator hardening: PCNFS structural RPC
+    checks, Adam6500 logic-inversion fixed, MySQL
+    parse_response requires OK packet header, VNC recv length
+    + loop bound, TeamSpeak recv-length validation,
+    RPCAP NULL check 
+  - SSH: warn at runtime if linked libssh < 0.10.6 (CVE-2025-4877) 
+  - SAPR3 / postgres connection-string injection refused on quote chars    
+  - dpl4hydra: switch to HTTPS; sanitize VENDOR and pass via awk -v
+    rather than literal interpolation (/630)
+  - hydra-wizard.sh: build a properly-quoted argv array 
+  - xhydra: refuse SMB2 workgroup containing '}' 
+  - SVN URLBRANCH NUL-termination + 255-byte miscptr cap;
+    CVS encryption-table OOB-read clamp; IMAP DIGEST-MD5
+    prefix + capability accumulator; SIP external_ip_addr
+    NUL-termination; strip-trailing-CRLF off-by-one in
+    pop3/imap/smtp/nntp 
 * more buffer overflow fixes
 
 Release 9.7
@@ -134,7 +183,7 @@ Release 8.5
 * Fix for the restore file crash on some x64 platforms (finally! thanks to lukas227!)
 * Changed the format of the restore file to detect cross platform copies
 * Fixed a bug in the NCP module
-* Favor strrchr() over rindex()
+* Favor strrchr over rindex
 * Added refactoring patch by diadlo
 * Updated man page with missing command line options
 
@@ -284,7 +333,7 @@ Release 7.4
 * Fixed SMB module return code for invalid hours logon and LM auth disabled
 * Fixed http-{get|post-form} from xhydra
 * Added OS/390 mainframe 64bit support (thanks to dan(at)danny(dot)cz)
-* Added limits to input files for -L, -P, -C and -M - people were using unhealthy large files! ;-)
+* Added limits to input files for -L, -P, -C and -M - people were using unhealthy large files!;-)
 * Added debug mode option to usage (thanks to Anold Black)
 
 
@@ -820,7 +869,7 @@ v2.2 (OCTOBER 2002)		PUBLIC RELEASE
   -e n|s switch
 
 v2.1 (APRIL 2002)		PUBLIC RELEASE
-* added ldap cracking mode (thanks to myself, eh ;-)
+* added ldap cracking mode (thanks to myself, eh;-)
 * added -e option to try null passwords ("-e n") and passwords equal to the
   login ("-e s"). When specifying -e, -p/-P is optional (and vice versa)
 * when a login is found, hydra will now go on with the next login
@@ -844,7 +893,7 @@ v1.5 (DECEMBER 2001)		PRIVATE RELEASE
 * added -f option to stop attacking once a valid login/pw has been discovered
 * made modules more hydra-mod compliant
 * configure stuff thrown out - was not really used and too complicated,
-  wrote my own, lets hope it works everywhere ;-)
+  wrote my own, lets hope it works everywhere;-)
 
 v1.4 (DECEMBER 2001)		PUBLIC RELEASE
 * added REXEC cracking module
@@ -881,7 +930,7 @@ v1.1 (May 2001)			PUBLIC RELEASE
 * Fixed a deadlock in the modules, plus an additional one in the telnet module
 
 v1.0 (April 2001)		PUBLIC RELEASE
-* Verified that all service modules really work, no fix necessary ;-)
+* Verified that all service modules really work, no fix necessary;-)
   ... so let's make it public
 * Changed the LICENCE
 
@@ -889,19 +938,19 @@ v0.6 (April 2001)		PRIVATE RELEASE
 * Added hydra-cisco.c for the cisco 3 times "Password:" type
 * Added hydra-imap.c for the imap service
 * Fixed a bug in hydra-mod.c: empty logins resulted in an empty
-  hydra_get_next_password() :-(, additionally the blocking/recv works better
-  now. (no, not better - perfect ;-)
+  hydra_get_next_password :-(, additionally the blocking/recv works better
+  now. (no, not better - perfect;-)
 * Fixed a bug in hydra-telnet.c: too many false alarms for success due some
   mis-thinking on my side and I also implemented a more flexible checking
 * Fixed hydra-ftp.c to allow more weird reactions
-* Fixed all ;-) memory leaks
+* Fixed all;-) memory leaks
 
 v0.5 (December 2000)		PUBLIC RELEASE
 * NOTE WE HAVE GOT A NEW WWW ADDRESS -> www.thehackerschoice.com
 * added telnet protocol
 * exchanged snprintf with sprintf(%.250s) to let it compile on more platforms
   but still have buffer overflow protection.
-* fixed a bug in Makefile.in (introduced by Plasmo ,-)
+* fixed a bug in Makefile.in (introduced by Plasmo,-)
 
 v0.4 (August 2000)		PUBLIC RELEASE
 * Plasmoid added a ./configure script. thanks!

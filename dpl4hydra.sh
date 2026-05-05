@@ -75,14 +75,20 @@ refresh ()
     
   for SUBSITE in `cat $SUBSITES`; do
     VENDOR=`echo $SUBSITE | sed 's/\.htm*//' | sed 's/.*-//'`
+    # restrict to a charset that's safe inside the awk -v assignment
+    VENDOR=`printf '%s' "$VENDOR" | tr -cd 'A-Za-z0-9._-'`
+    if [ -z "$VENDOR" ]; then
+      echo "Skipping subsite with empty/invalid vendor name: $SUBSITE" >&2
+      continue
+    fi
     echo "Downloading default passwords for ${VENDOR} ... " | tr -d "\n"
     $FETCH "${SITE}${SUBSITE}" | tr -d '\n\r' | sed 's/<tr/\n/gi' | sed 's/<\/tr/\n/gi' | \
       grep -iw celltext | sed 's/.*celltext">/,/i' | sed 's/<\/td>/,/g' | sed 's/<[a-z =/":;-]*>//gi' | \
-      sed 's/[\t ]*,[\t ]*/,/g' | sed 's/&[a-z]*;//gi' | sed 's/(unknown)//gi' | sed 's/(none)//gi' | sed 's/,unknown,/,,/gi' | sed 's/,none,/,,/gi' > dpl4hydra_${VENDOR}.tmp
+      sed 's/[\t ]*,[\t ]*/,/g' | sed 's/&[a-z]*;//gi' | sed 's/(unknown)//gi' | sed 's/(none)//gi' | sed 's/,unknown,/,,/gi' | sed 's/,none,/,,/gi' > "dpl4hydra_${VENDOR}.tmp"
 
-    cat dpl4hydra_${VENDOR}.tmp | awk -F, '{print"'$VENDOR',"$2","$3","$4","$5","$6","$7","$8","$9}' >> $FULLFILE
-    
-    rm dpl4hydra_${VENDOR}.tmp
+    awk -F, -v vendor="$VENDOR" '{print vendor","$2","$3","$4","$5","$6","$7","$8","$9}' "dpl4hydra_${VENDOR}.tmp" >> $FULLFILE
+
+    rm "dpl4hydra_${VENDOR}.tmp"
     echo "done."
   done
   rm $SUBSITES
@@ -206,7 +212,8 @@ LOCALFILE="$DPLPATH/dpl4hydra_local.csv"
 INDEXSITE="$DPLPATH/dpl4hydra_index.tmp"
 SUBSITES="$DPLPATH/dpl4hydra_subs.tmp"
 CLEANFILE="$DPLPATH/dpl4hydra_clean.tmp"
-SITE="http://open-sez.me"
+# override with DPL_SITE in the environment if HTTPS breaks
+SITE="${DPL_SITE:-https://open-sez.me}"
 
 case $# in
 	0) usage

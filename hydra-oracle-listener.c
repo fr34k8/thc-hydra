@@ -141,7 +141,11 @@ int32_t ora_hash_password(char *pass) {
   int32_t siz = 0;
   unsigned char *desresult;
   unsigned char *result;
-  char buff[strlen(pass) + 5];
+  /* fixed-size: VLAs interact poorly with stack canaries. MAXLINESIZE = 256. */
+  char buff[261];
+
+  if (strlen(pass) + 4 >= sizeof(buff))
+    return -1;
 
   memset(buff, 0, sizeof(buff));
 

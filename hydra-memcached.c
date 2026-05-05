@@ -161,7 +161,7 @@ int32_t service_mcached_init(char *ip, int32_t sp, unsigned char options, char *
 
   if (hydra_data_ready_timed(sock, 0, 1000) > 0) {
     buf = hydra_receive_line(sock);
-    if (strstr(buf, "VERSION ")) {
+    if (buf != NULL && strstr(buf, "VERSION ")) {
       hydra_report_found_host(port, ip, "memcached", fp);
       mcached_send_com_quit(sock);
       if (sock >= 0)

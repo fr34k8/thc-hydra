@@ -61,6 +61,12 @@ int32_t start_socks5(int32_t s, char *ip, int32_t port, unsigned char options, c
     For username/password authentication the client's authentication request is
     field 1: version number, 1 byte (must be 0x01)
   */
+  /* RFC 1929 length-prefix bytes are u8: cap login/pass at 255 each so the
+   * (char)strlen() cast in the snprintf below cannot wrap to 0. */
+  if (strlen(login) > 255 || strlen(pass) > 255) {
+    hydra_completed_pair_skip();
+    return 1;
+  }
   snprintf(buffer, sizeof(buffer), "\x01%c%s%c%s", (char)strlen(login), login, (char)strlen(pass), pass);
 
   if (hydra_send(s, buffer, strlen(buffer), 0) < 0)
@@ -85,7 +91,9 @@ int32_t start_socks5(int32_t s, char *ip, int32_t port, unsigned char options, c
       hydra_send(s, buffer, 10, 0);
     }
     if ((buf = (unsigned char *)hydra_receive_line(s)) != NULL) {
-      if (buf[1] == 0 || buf[1] == 32) {
+      /* SOCKS5 REQUEST_GRANTED is 0; hydra_receive_line maps NULs to 0x20
+       * so a literal-zero match here is unambiguous. */
+      if (buf[1] == 0) {
         hydra_report_found_host(port, ip, "socks5", fp);
         hydra_completed_pair_found();
         fud = 1;

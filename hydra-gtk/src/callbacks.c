@@ -308,7 +308,18 @@ int hydra_get_options(char *options[]) {
 
     widget = lookup_widget(GTK_WIDGET(wndMain), "entSMB2Workgroup");
 
-    snprintf(smbparm, sizeof(smbparm) - 1, "nthash:%s workgroup:{%s}", pth ? "true" : "false", (char *)gtk_entry_get_text((GtkEntry *)widget));
+    /* '}' would close the workgroup field early in hydra-smb2's miscptr
+     * parser (strchr(... '}')); refuse rather than silently truncate. */
+    {
+      const char *wg = (const char *)gtk_entry_get_text((GtkEntry *)widget);
+      if (wg && strchr(wg, '}') != NULL) {
+        g_warning("Workgroup contains '}' which is reserved for the SMB2 "
+                  "miscptr framing; please use a different workgroup.");
+        return;
+      }
+      snprintf(smbparm, sizeof(smbparm) - 1, "nthash:%s workgroup:{%s}",
+               pth ? "true" : "false", wg ? wg : "");
+    }
   } else if (!strcmp(tmp, "sapr3")) {
     widget = lookup_widget(GTK_WIDGET(wndMain), "spnSAPR3");
     j = gtk_spin_button_get_value_as_int((GtkSpinButton *)widget);

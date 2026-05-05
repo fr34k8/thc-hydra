@@ -71,14 +71,18 @@ int32_t start_pcnfs(int32_t s, char *ip, int32_t port, unsigned char options, ch
                         "allowed for legal purposes ");
   strcpy(prh->name, "localhost");
 
+  if (strlen(login) >= sizeof(prh->id) || strlen(pass) >= sizeof(prh->passwd)) {
+    hydra_completed_pair_skip();
+    return 1;
+  }
   ptr = prh->id;
-  while (*login) {
+  while (*login && (size_t)(ptr - prh->id) < sizeof(prh->id) - 1) {
     *ptr++ = (*login ^ 0x5b) & 0x7f;
     login++;
   }
   *ptr = 0;
   ptr = prh->passwd;
-  while (*pass) {
+  while (*pass && (size_t)(ptr - prh->passwd) < sizeof(prh->passwd) - 1) {
     *ptr++ = (*pass ^ 0x5b) & 0x7f;
     pass++;
   }
@@ -122,7 +126,12 @@ int32_t start_pcnfs(int32_t s, char *ip, int32_t port, unsigned char options, ch
     return 3;
   }
 
-  if (buf[27] == 32 && buf[28] == 32 && buf[29] == 32) {
+  /* Sun-RPC reply: byte 7 = msg_type, byte 11 = reply_stat, byte 23 = accept_stat,
+   * bytes 24-27 = PCNFSD AUTH return code. hydra_receive_line replaces NULs with
+   * 0x20, so a successful auth shows 0x20 across that whole window. */
+  if (buf[7]  == 32 && buf[11] == 32 && buf[23] == 32 &&
+      buf[24] == 32 && buf[25] == 32 && buf[26] == 32 && buf[27] == 32 &&
+      buf[28] == 32 && buf[29] == 32) {
     hydra_report_found_host(port, ip, "pcnfs", fp);
     hydra_completed_pair_found();
     free(buf);

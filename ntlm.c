@@ -1144,9 +1144,24 @@ Contributed LGPL versions of some of the GPL'd Samba files.
     AddBytes(ptr, header, b, len * 2);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         \
   }
 
-#define GetUnicodeString(structPtr, header) unicodeToString(((char *)structPtr) + IVAL(&structPtr->header.offset, 0), SVAL(&structPtr->header.len, 0) / 2)
-#define GetString(structPtr, header) toString((((char *)structPtr) + IVAL(&structPtr->header.offset, 0)), SVAL(&structPtr->header.len, 0))
-#define DumpBuffer(fp, structPtr, header) dumpRaw(fp, ((unsigned char *)structPtr) + IVAL(&structPtr->header.offset, 0), SVAL(&structPtr->header.len, 0))
+/* All callers in this codebase decode the Type 2 challenge into a 4096-byte
+ * buf, so any embedded offset+len pointing past that is server-driven OOB. */
+#define NTLM_MAX_CHALLENGE 4096
+#define NTLM_OFFSET_OK(structPtr, header, scale)                                                                                                                                                                                                                                                                                                                                                                                                                                                                              \
+  ((uint64_t)IVAL(&structPtr->header.offset, 0) + (uint64_t)SVAL(&structPtr->header.len, 0) <= (uint64_t)NTLM_MAX_CHALLENGE)
+#define GetUnicodeString(structPtr, header)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    \
+  (NTLM_OFFSET_OK(structPtr, header, 1)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        \
+       ? unicodeToString(((char *)structPtr) + IVAL(&structPtr->header.offset, 0), SVAL(&structPtr->header.len, 0) / 2)                                                                                                                                                                                                                                                                                                                                                                                                        \
+       : (char *)"")
+#define GetString(structPtr, header)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           \
+  (NTLM_OFFSET_OK(structPtr, header, 1)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        \
+       ? toString((((char *)structPtr) + IVAL(&structPtr->header.offset, 0)), SVAL(&structPtr->header.len, 0))                                                                                                                                                                                                                                                                                                                                                                                                                 \
+       : (unsigned char *)"")
+#define DumpBuffer(fp, structPtr, header)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      \
+  do {                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         \
+    if (NTLM_OFFSET_OK(structPtr, header, 1))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  \
+      dumpRaw(fp, ((unsigned char *)structPtr) + IVAL(&structPtr->header.offset, 0), SVAL(&structPtr->header.len, 0));                                                                                                                                                                                                                                                                                                                                                                                                         \
+  } while (0)
 
 static void dumpRaw(FILE *fp, unsigned char *buf, size_t len) {
   int32_t i;
@@ -1161,7 +1176,9 @@ static char *unicodeToString(char *p, size_t len) {
   int32_t i;
   static char buf[4096];
 
-  assert(len + 1 < sizeof buf);
+  /* runtime bound: assert() is a no-op under -DNDEBUG. */
+  if (len + 1 >= sizeof buf)
+    len = sizeof buf - 1;
 
   for (i = 0; i < (int32_t)len; ++i) {
     buf[i] = *p & 0x7f;
@@ -1177,7 +1194,8 @@ static unsigned char *strToUnicode(char *p) {
   size_t l = strlen(p);
   int32_t i = 0;
 
-  assert(l * 2 < sizeof buf);
+  if (l * 2 >= sizeof buf)
+    l = (sizeof buf - 1) / 2;
 
   while (l--) {
     buf[i++] = *p++;
@@ -1190,7 +1208,8 @@ static unsigned char *strToUnicode(char *p) {
 static unsigned char *toString(char *p, size_t len) {
   static unsigned char buf[4096];
 
-  assert(len + 1 < sizeof buf);
+  if (len + 1 >= sizeof buf)
+    len = sizeof buf - 1;
 
   memcpy(buf, p, len);
   buf[len] = 0;

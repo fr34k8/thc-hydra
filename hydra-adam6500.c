@@ -35,16 +35,22 @@ int32_t start_adam6500(int32_t s, char *ip, int32_t port, unsigned char options,
     if (hydra_send(s, adam6500_req2, sizeof(adam6500_req2), 0) < 0)
       return 1;
     if (recv(s, buffer, sizeof(buffer), 0) == 259 && memcmp(buffer, adam6500_resp2, sizeof(adam6500_resp2)) == 0) {
+      /* matched the wrong-credential reply */
       hydra_completed_pair();
       if (memcmp(hydra_get_next_pair(), &HYDRA_EXIT, sizeof(HYDRA_EXIT)) == 0)
         return 3;
       return 1;
     }
+    /* req1 matched but req2 didn't: positive-match success path */
+    hydra_report_found_host(port, ip, "adam6500", fp);
+    hydra_completed_pair_found();
+    return 1;
   }
 
-  hydra_report_found_host(port, ip, "adam6500", fp);
-  hydra_completed_pair_found();
-
+  /* req1 didn't match — server doesn't speak the protocol */
+  hydra_completed_pair();
+  if (memcmp(hydra_get_next_pair(), &HYDRA_EXIT, sizeof(HYDRA_EXIT)) == 0)
+    return 3;
   return 1;
 }
 

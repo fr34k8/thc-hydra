@@ -170,6 +170,8 @@ int32_t service_redis_init(char *ip, int32_t sp, unsigned char options, char *mi
     return 2;
   }
   buf = hydra_receive_line(sock);
+  if (buf == NULL)
+    return 2;
   if (debug)
     printf("[DEBUG] buf = %s\n", buf);
   // authentication test

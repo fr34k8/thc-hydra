@@ -27,6 +27,8 @@ int32_t start_cisco_enable(int32_t s, char *ip, int32_t port, unsigned char opti
       return 1;
     }
     buf = hydra_receive_line(s);
+    if (buf == NULL)
+      return 1;
     if (strstr(buf, "assw") != NULL) {
       hydra_completed_pair();
       free(buf);
@@ -127,13 +129,13 @@ void service_cisco_enable(char *ip, int32_t sp, unsigned char options, char *mis
       if (buf != NULL)
         free(buf);
       buf = hydra_receive_line(sock);
-      if (hydra_strcasestr(buf, "ress ENTER") != NULL) {
+      if (buf != NULL && hydra_strcasestr(buf, "ress ENTER") != NULL) {
         hydra_send(sock, "\r\n", 2, 0);
         free(buf);
         buf = hydra_receive_line(sock);
       }
 
-      if (strstr(buf, "assw") != NULL) {
+      if (buf != NULL && strstr(buf, "assw") != NULL) {
         if (quiet != 1)
           fprintf(stderr,
                   "[ERROR] Child with pid %d terminating - can not login, can "

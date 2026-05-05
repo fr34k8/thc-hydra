@@ -49,6 +49,8 @@ int32_t start_rpcap(int32_t s, char *ip, int32_t port, unsigned char options, ch
   }
 
   buf = hydra_receive_line(s);
+  if (buf == NULL)
+    return 1;
 
   if (buf[1] == '\x88') {
     hydra_report_found_host(port, ip, "rpcap", fp);
@@ -153,6 +155,10 @@ int32_t service_rpcap_init(char *ip, int32_t sp, unsigned char options, char *mi
   }
 
   buf = hydra_receive_line(sock);
+  if (buf == NULL) {
+    hydra_report(stderr, "[!] rpcap: no response from server during init\n");
+    return 1;
+  }
 
   if (strstr(buf, "NULL authentication not permitted") == NULL) {
     hydra_report(stderr, "[!] rpcap error or no need of authentication!\n");

@@ -52,7 +52,11 @@ int32_t start_vnc(int32_t s, char *ip, int32_t port, unsigned char options, char
   if (strlen(pass = hydra_get_next_password()) == 0)
     pass = empty;
 
-  recv(s, buf2, CHALLENGESIZE + 4, 0);
+  memset(buf2, 0, sizeof(buf2));
+  if (recv(s, buf2, CHALLENGESIZE + 4, 0) < CHALLENGESIZE + 4) {
+    hydra_report(stderr, "[ERROR] VNC server connection failed (short read)\n");
+    hydra_child_exit(0);
+  }
 
   if (vnc_client_version == RFB37) {
     int32_t i;
@@ -63,7 +67,7 @@ int32_t start_vnc(int32_t s, char *ip, int32_t port, unsigned char options, char
       hydra_child_exit(0);
     }
 
-    for (i = 1; i <= buf2[0]; i++) {
+    for (i = 1; i < buf2[0] && i < (int32_t)sizeof(buf2); i++) {
       // fprintf(stderr,"sec type %u\n",buf2[i]);
       // check if weak security types are available
       if (buf2[i] <= 0x2) {

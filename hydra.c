@@ -703,7 +703,17 @@ void hydra_restore_write(int32_t print_msg) {
     return;
   }
 
-  if ((f = fopen(RESTOREFILE, "w")) == NULL) {
+  /* 0600 + O_NOFOLLOW: the restore file holds credential state. */
+  {
+    int rfd = open(RESTOREFILE, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
+    if (rfd < 0) {
+      fprintf(stderr, "[ERROR] could not open restore file (%s) for writing - ", RESTOREFILE);
+      perror("");
+      return;
+    }
+    f = fdopen(rfd, "w");
+  }
+  if (f == NULL) {
     fprintf(stderr, "[ERROR] Can not create restore file (%s) - ", RESTOREFILE);
     perror("");
     process_restore = 0;
@@ -785,11 +795,26 @@ void hydra_restore_read() {
   char mynull[4], buf[4];
   int32_t i, j, orig_debug = debug;
   char out[1024];
+  struct stat rst;
+  int rfd;
 
   printf("[INFORMATION] reading restore file %s\n", RESTOREFILE);
-  if ((f = fopen(RESTOREFILE, "r")) == NULL) {
-    fprintf(stderr, "[ERROR] restore file (%s) not found - ", RESTOREFILE);
+  /* Refuse anything that isn't a regular file owned by us — a co-tenant must
+   * not be able to feed us a crafted restore via symlink or shared-CWD drop. */
+  if ((rfd = open(RESTOREFILE, O_RDONLY | O_NOFOLLOW)) < 0) {
+    fprintf(stderr, "[ERROR] restore file (%s) not found or not a regular file - ", RESTOREFILE);
     perror("");
+    exit(-1);
+  }
+  if (fstat(rfd, &rst) != 0 || !S_ISREG(rst.st_mode) || rst.st_uid != geteuid()) {
+    fprintf(stderr, "[ERROR] restore file (%s) is not a regular file owned by the current user; refusing to load\n", RESTOREFILE);
+    close(rfd);
+    exit(-1);
+  }
+  if ((f = fdopen(rfd, "r")) == NULL) {
+    fprintf(stderr, "[ERROR] could not fdopen restore file (%s) - ", RESTOREFILE);
+    perror("");
+    close(rfd);
     exit(-1);
   }
 
@@ -838,6 +863,24 @@ void hydra_restore_read() {
   hydra_brains.ofp = stdout;
   fck = (int32_t)fread(&hydra_options, sizeof(hydra_option), 1, f);
   hydra_options.restore = 1;
+  /* the restore file is deserialized data: clamp every count/size field
+   * before letting it drive a malloc() or a loop bound. */
+  if (hydra_brains.targets < 0 || hydra_brains.targets > MAX_LINES / 1000) {
+    fprintf(stderr, "[ERROR] restore file targets count out of range (%d)\n", hydra_brains.targets);
+    exit(-1);
+  }
+  if (hydra_brains.countlogin > MAX_LINES || hydra_brains.countpass > MAX_LINES) {
+    fprintf(stderr, "[ERROR] restore file login/password count out of range\n");
+    exit(-1);
+  }
+  if (hydra_brains.sizelogin > MAX_BYTES || hydra_brains.sizepass > MAX_BYTES) {
+    fprintf(stderr, "[ERROR] restore file login/password total size out of range\n");
+    exit(-1);
+  }
+  if (hydra_options.max_use < 1 || hydra_options.max_use > MAXTASKS * MAXSERVERS) {
+    fprintf(stderr, "[ERROR] restore file max_use out of range (%d)\n", hydra_options.max_use);
+    exit(-1);
+  }
   verbose = hydra_options.verbose;
   debug = hydra_options.debug;
   if (debug || orig_debug)
@@ -890,7 +933,7 @@ void hydra_restore_read() {
 
   login_ptr = malloc(hydra_brains.sizelogin + hydra_brains.countlogin + 8);
   if (!login_ptr) {
-    fprintf(stderr, "Error: malloc(%lu) failed\n", hydra_brains.sizelogin + hydra_brains.countlogin + 8);
+    fprintf(stderr, "Error: malloc(%llu) failed\n", (unsigned long long)(hydra_brains.sizelogin + hydra_brains.countlogin + 8));
     exit(-1);
   }
   fck = (int32_t)fread(login_ptr, hydra_brains.sizelogin + hydra_brains.countlogin + 8, 1, f);
@@ -899,7 +942,7 @@ void hydra_restore_read() {
   if (!check_flag(hydra_options.mode, MODE_COLON_FILE)) { // NOT colonfile mode
     pass_ptr = malloc(hydra_brains.sizepass + hydra_brains.countpass + 8);
     if (!pass_ptr) {
-      fprintf(stderr, "Error: malloc(%lu) failed\n", hydra_brains.sizepass + hydra_brains.countpass + 8);
+      fprintf(stderr, "Error: malloc(%llu) failed\n", (unsigned long long)(hydra_brains.sizepass + hydra_brains.countpass + 8));
       exit(-1);
     }
     fck = (int32_t)fread(pass_ptr, hydra_brains.sizepass + hydra_brains.countpass + 8, 1, f);
@@ -922,15 +965,40 @@ void hydra_restore_read() {
       exit(-1);
     }
     fck = (int32_t)fread(hydra_targets[j], sizeof(hydra_target), 1, f);
+    /* redo_login/redo_pass are sized MAXTASKS*2+2; skiplogin is sized SKIPLOGIN. */
+    if (hydra_targets[j]->redo < 0 || hydra_targets[j]->redo > MAXTASKS * 2 + 2) {
+      fprintf(stderr, "[ERROR] restore file target %d redo count out of range (%d)\n", j, hydra_targets[j]->redo);
+      exit(-1);
+    }
+    if (hydra_targets[j]->skipcnt < 0 || hydra_targets[j]->skipcnt >= SKIPLOGIN) {
+      fprintf(stderr, "[ERROR] restore file target %d skipcnt out of range (%d)\n", j, hydra_targets[j]->skipcnt);
+      exit(-1);
+    }
     sck = fgets(out, sizeof(out), f);
     if (out[0] != 0 && out[strlen(out) - 1] == '\n')
       out[strlen(out) - 1] = 0;
     hydra_targets[j]->target = malloc(strlen(out) + 1);
     strcpy(hydra_targets[j]->target, out);
+    /* keep the offsets within the login/pass arenas; otherwise the pointer
+     * can be aimed at any address relative to login_ptr/pass_ptr. */
     sck = fgets(out, sizeof(out), f);
-    hydra_targets[j]->login_ptr = login_ptr + atoi(out);
+    {
+      long off = atol(out);
+      if (off < 0 || (uint64_t)off >= hydra_brains.sizelogin + hydra_brains.countlogin + 8) {
+        fprintf(stderr, "[ERROR] restore file target %d login_ptr offset out of range (%ld)\n", j, off);
+        exit(-1);
+      }
+      hydra_targets[j]->login_ptr = login_ptr + off;
+    }
     sck = fgets(out, sizeof(out), f);
-    hydra_targets[j]->pass_ptr = pass_ptr + atoi(out);
+    {
+      long off = atol(out);
+      if (off < 0 || (uint64_t)off >= hydra_brains.sizepass + hydra_brains.countpass + 8) {
+        fprintf(stderr, "[ERROR] restore file target %d pass_ptr offset out of range (%ld)\n", j, off);
+        exit(-1);
+      }
+      hydra_targets[j]->pass_ptr = pass_ptr + off;
+    }
     sck = fgets(out, sizeof(out), f); // target login_ptr, ignord
     sck = fgets(out, sizeof(out), f);
     if (hydra_options.bfg) {
@@ -1025,6 +1093,13 @@ void hydra_restore_read() {
   }
   fclose(f);
   hydra_debug(0, "hydra_restore_read");
+}
+
+/* _exit() is async-signal-safe; exit() runs atexit handlers and may take
+ * stdio locks (POSIX.1-2008 §2.4.3). */
+static void hydra_signal_safe_exit(int32_t signo) {
+  (void)signo;
+  _exit(2);
 }
 
 void killed_childs(int32_t signo) {
@@ -1240,14 +1315,14 @@ int32_t hydra_spawn_head(int32_t head_no, int32_t target_no) {
       process_restore = 0;
       child_socket = hydra_heads[head_no]->sp[1];
       signal(SIGCHLD, killed_childs);
-      signal(SIGTERM, exit);
+      signal(SIGTERM, hydra_signal_safe_exit);
 #ifdef SIGBUS
-      signal(SIGBUS, exit);
+      signal(SIGBUS, hydra_signal_safe_exit);
 #endif
       signal(SIGSEGV, killed_childs_report);
-      signal(SIGHUP, exit);
-      signal(SIGINT, exit);
-      signal(SIGPIPE, exit);
+      signal(SIGHUP, hydra_signal_safe_exit);
+      signal(SIGINT, hydra_signal_safe_exit);
+      signal(SIGPIPE, hydra_signal_safe_exit);
       // free structures to make memory available
       cmdlinetarget = hydra_targets[target_no]->target;
       for (i = 0; i < hydra_options.max_use; i++)
@@ -1626,14 +1701,18 @@ FILE *hydra_divide_file(FILE *file, uint32_t my_segment, uint32_t num_segments) 
   uint64_t segment_start = segment_size * (my_segment - 1) + 1;
   uint64_t segment_end = segment_size * my_segment;
 
-  srand(time(NULL));
-  int filetag = rand();
-
-  sprintf(output_file_name, "segment_%d_%d.txt", filetag, my_segment);
-  output_file = fopen(output_file_name, "w");
-
+  /* mkstemps gives an unpredictable filename, mode 0600, O_EXCL semantics. */
+  int seg_fd;
+  snprintf(output_file_name, sizeof(output_file_name), "segment_%uXXXXXX.txt", my_segment);
+  seg_fd = mkstemps(output_file_name, 4); /* keep ".txt" suffix */
+  if (seg_fd < 0) {
+    fprintf(stderr, "[ERROR] Could not create segment file: %s\n", strerror(errno));
+    return NULL;
+  }
+  output_file = fdopen(seg_fd, "w");
   if (!output_file) {
     fprintf(stderr, "[ERROR] Segment file empty: %s\n", hydra_options.passfile);
+    close(seg_fd);
     return NULL;
   }
 
@@ -2193,7 +2272,7 @@ void process_proxy_line(int32_t type, char *string) {
   // now fill the stuff
 #ifdef AF_INET6
   if (ipv6 != NULL && (ipv4 == NULL || prefer_ipv6)) {
-    if (memcmp(proxy_string_ip[proxy_count] + 1, fe80, 2) == 0 && device_string == NULL) {
+    if (memcmp((char *)&ipv6->sin6_addr, fe80, 2) == 0 && device_string == NULL) {
       fprintf(stderr,
               "[WARNING] The proxy address %s is a link local address, link "
               "local addresses require the interface being defined like this: "
@@ -2521,7 +2600,12 @@ int main(int argc, char *argv[]) {
                         "result in errornous results\n");
       break;
     case 'W':
+      /* conwait is fed to sleep(unsigned int): negative would wrap. */
       hydra_options.conwait = conwait = atoi(optarg);
+      if (conwait < 0) {
+        fprintf(stderr, "[ERROR] conwait (-W) must be >= 0\n");
+        exit(-1);
+      }
       break;
     case 's':
       hydra_options.port = port = atoi(optarg);
@@ -2552,7 +2636,12 @@ int main(int argc, char *argv[]) {
       hydra_options.tasks = atoi(optarg);
       break;
     case 'T':
+      /* max_use is later used as a malloc size multiplier for hydra_heads[]. */
       hydra_options.max_use = atoi(optarg);
+      if (hydra_options.max_use < 1 || hydra_options.max_use > MAXTASKS * MAXSERVERS) {
+        fprintf(stderr, "[ERROR] -T must be between 1 and %d\n", MAXTASKS * MAXSERVERS);
+        exit(-1);
+      }
       break;
     case 'U':
       modusage = 1;
@@ -3460,6 +3549,13 @@ int main(int argc, char *argv[]) {
       fprintf(stderr, "[ERROR] Option -t needs to be a number between 1 and %d\n", MAXTASKS);
       exit(-1);
     }
+#ifdef __CYGWIN__
+    /* -t > 30 reliably stack-smashes on Cygwin (see PROBLEMS). */
+    if (hydra_options.tasks > 30) {
+      fprintf(stderr, "[ERROR] On Cygwin, -t must be <= 30 (per-thread stack budget limit)\n");
+      exit(-1);
+    }
+#endif
     if (hydra_options.max_use > MAXTASKS) {
       fprintf(stderr, "[WARNING] reducing maximum tasks to MAXTASKS (%d)\n", MAXTASKS);
       hydra_options.max_use = MAXTASKS;
@@ -3919,13 +4015,19 @@ int main(int argc, char *argv[]) {
   //    printf("[DATA] with additional data %s\n", hydra_options.miscptr);
 
   if (hydra_options.outfile_ptr != NULL) {
-    char outfile_open_type[] = "a+"; // Default open in a+ mode
+    /* O_NOFOLLOW + mode 0600: the output file holds recovered credentials. */
+    int oflags, ofd;
+    char outfile_open_type[] = "a+";
     if (hydra_options.outfile_format == FORMAT_JSONV1 && hydra_options.restore != 1) {
-      outfile_open_type[0] = 'w'; // Creat new outfile, if using JSON output and
-                                  // not using -R. The open mode should be "w+".
+      outfile_open_type[0] = 'w';
+      oflags = O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW;
+    } else {
+      oflags = O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW;
     }
-    if ((hydra_brains.ofp = fopen(hydra_options.outfile_ptr, outfile_open_type)) == NULL) {
+    ofd = open(hydra_options.outfile_ptr, oflags, 0600);
+    if (ofd < 0 || (hydra_brains.ofp = fdopen(ofd, outfile_open_type)) == NULL) {
       perror("[ERROR] Error creating outputfile");
+      if (ofd >= 0) close(ofd);
       exit(-1);
     }
     if (hydra_options.outfile_format == FORMAT_JSONV1) {

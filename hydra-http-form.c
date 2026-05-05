@@ -901,6 +901,13 @@ int32_t start_http_form(int32_t s, char *ip, int32_t port, unsigned char options
   upd3variables = hydra_strrep(upd3variables, "^PASS^", cpass);
   upd3variables = hydra_strrep(upd3variables, "^USER64^", b64login);
   upd3variables = hydra_strrep(upd3variables, "^PASS64^", b64pass);
+  /* hydra_strrep returns NULL on substitution overflow. */
+  if (upd3variables == NULL) {
+    if (debug)
+      hydra_report(stderr, "[DEBUG] placeholder substitution exceeded buffer; skipping pair\n");
+    hydra_completed_pair_skip();
+    return 1;
+  }
 
   // Replace the user/pass placeholders in the user-supplied headers
   hdrrep(&ptr_head, "^USER^", clogin);
@@ -1206,7 +1213,11 @@ int32_t start_http_form(int32_t s, char *ip, int32_t port, unsigned char options
 
           urlpath = strrchr(url, '/');
           if (urlpath != NULL) {
-            strncpy(urlpath_extracted, url, urlpath - url);
+            size_t cnt = (size_t)(urlpath - url);
+            if (cnt >= sizeof(urlpath_extracted))
+              cnt = sizeof(urlpath_extracted) - 1;
+            strncpy(urlpath_extracted, url, cnt);
+            urlpath_extracted[cnt] = 0;
             sprintf(str3, "%.1000s/%.1000s", urlpath_extracted, redirected_url_buff);
           } else {
             sprintf(str3, "%.1000s/%.1000s", url, redirected_url_buff);
@@ -1233,6 +1244,42 @@ int32_t start_http_form(int32_t s, char *ip, int32_t port, unsigned char options
 
       if (verbose)
         hydra_report(stderr, "[VERBOSE] Page redirected to http[s]://%s%s\n", str2, str3);
+
+      /* on a cross-host redirect, drop the cookie jar and any
+       * operator-supplied Authorization header so we don't ship the
+       * original target's credentials to a third party. */
+      {
+        char orig_host[256];
+        char *colon;
+        size_t orig_len, str2_len;
+        strncpy(orig_host, webtarget ? webtarget : "", sizeof(orig_host) - 1);
+        orig_host[sizeof(orig_host) - 1] = 0;
+        if ((colon = strchr(orig_host, ':')) != NULL) *colon = 0;
+        orig_len = strlen(orig_host);
+        str2_len = strlen(str2);
+        /* match str2 against orig_host with tolerance for trailing :port */
+        int same_host = (str2_len >= orig_len)
+            && strncasecmp(str2, orig_host, orig_len) == 0
+            && (str2[orig_len] == 0 || str2[orig_len] == ':' || str2[orig_len] == '/');
+        if (!same_host) {
+          if (verbose)
+            hydra_report(stderr, "[VERBOSE] redirect crosses host boundary (%s -> %s); clearing cookies and Authorization\n", orig_host, str2);
+          {
+            ptr_cookie_node cur = ptr_cookie;
+            while (cur != NULL) {
+              ptr_cookie_node nxt = cur->next;
+              if (cur->name) free(cur->name);
+              if (cur->value) free(cur->value);
+              free(cur);
+              cur = nxt;
+            }
+            ptr_cookie = NULL;
+          }
+          /* remove operator-set Authorization header if any */
+          if (header_exists(&ptr_head, "Authorization", HEADER_TYPE_DEFAULT))
+            hdrrepv(&ptr_head, "Authorization", "");
+        }
+      }
 
       if (header_exists(&ptr_head, "Content-Length", HEADER_TYPE_DEFAULT))
         hdrrepv(&ptr_head, "Content-Length", "0");

@@ -1133,7 +1133,8 @@ char *hydra_strrep(char *string, char *oldpiece, char *newpiece) {
   if (strlen(string) > 6000) {
     hydra_report(stderr, "[ERROR] Supplied URL or POST data too large. Max "
                          "limit is 6000 characters.\n");
-    exit(-1);
+    /* hydra_child_exit so the parent records the error in its accounting. */
+    hydra_child_exit(2);
   }
 
   strcpy(newstring, string);
@@ -1357,7 +1358,15 @@ int32_t hydra_string_match(char *str, const char *regex) {
   }
 
   pcre2_match_data *match_data = pcre2_match_data_create_from_pattern(re, NULL);
-  rc = pcre2_match(re, str, PCRE2_ZERO_TERMINATED, 0, 0, match_data, NULL);
+  /* cap match steps so a catastrophic-backtracking pattern against an
+   * attacker-supplied body cannot peg the worker's CPU. */
+  pcre2_match_context *mctx = pcre2_match_context_create(NULL);
+  if (mctx != NULL) {
+    pcre2_set_match_limit(mctx, 100000);
+    pcre2_set_depth_limit(mctx, 1000);
+  }
+  rc = pcre2_match(re, str, PCRE2_ZERO_TERMINATED, 0, 0, match_data, mctx);
+  if (mctx != NULL) pcre2_match_context_free(mctx);
   pcre2_match_data_free(match_data);
   pcre2_code_free(re);
 

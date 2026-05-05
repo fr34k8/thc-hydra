@@ -189,15 +189,17 @@ char *hydra_mysql_prepare_auth(char *login, char *pass) {
 
 /* and 1 if failed                     */
 char hydra_mysql_parse_response(unsigned char *response) {
-  unsigned long response_len = *((unsigned long *)response) & 0xffffff;
+  /* require an OK packet header (response[4] == 0x00) with a non-zero payload;
+   * read response_len byte-wise to avoid UB from an unaligned 32-bit load. */
+  unsigned long response_len = ((unsigned long)response[0])
+                              | ((unsigned long)response[1] << 8)
+                              | ((unsigned long)response[2] << 16);
 
-  if (response_len < 4)
-    return 0;
-
-  if (response[4] == 0xff)
+  if (response_len < 1)
     return 1;
-
-  return 0;
+  if (response[4] == 0x00)
+    return 0;
+  return 1;
 }
 
 char hydra_mysql_send_com_quit(int32_t sock) {

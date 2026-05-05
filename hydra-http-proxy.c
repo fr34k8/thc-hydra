@@ -238,15 +238,23 @@ int32_t start_http_proxy(int32_t s, char *ip, int32_t port, unsigned char option
     }
   }
 
-  ptr = ((char *)strchr(http_proxy_buf, ' ')) + 1;
-  if (*ptr == '2' || (*ptr == '3' && *(ptr + 2) == '1') || (*ptr == '3' && *(ptr + 2) == '2') || (*ptr == '4' && *(ptr + 2) == '4')) {
+  {
+    char *space = strchr(http_proxy_buf, ' ');
+    ptr = space ? space + 1 : NULL;
+  }
+  if (ptr == NULL) {
+    hydra_report(stderr, "[INFO] Malformed proxy response (no status code) for %s:%s\n", login, pass);
+    hydra_completed_pair();
+    free(http_proxy_buf);
+    http_proxy_buf = hydra_receive_line(s);
+  } else if (*ptr == '2' || (*ptr == '3' && *(ptr + 2) == '1') || (*ptr == '3' && *(ptr + 2) == '2') || (*ptr == '4' && *(ptr + 2) == '4')) {
     hydra_report_found_host(port, ip, "http-proxy", fp);
     hydra_completed_pair_found();
     free(http_proxy_buf);
     http_proxy_buf = NULL;
   } else {
     if (*ptr != '4')
-      hydra_report(stderr, "[INFO] Unusual return code: %c for %s:%s\n", (char)*(strchr(http_proxy_buf, ' ') + 1), login, pass);
+      hydra_report(stderr, "[INFO] Unusual return code: %c for %s:%s\n", *ptr, login, pass);
     else if (verbose && *(ptr + 2) == '3')
       hydra_report(stderr, "[INFO] Potential success, could be false positive: %s:%s\n", login, pass);
     hydra_completed_pair();

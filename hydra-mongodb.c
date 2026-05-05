@@ -24,6 +24,8 @@ char *buf;
 #define DEFAULT_DB "admin"
 
 int is_error_msg(char *msg) {
+  if (msg == NULL)
+    return 0;
   if (strstr(msg, "errmsg ")) {
     if (debug)
       hydra_report(stderr, "[ERROR] %s\n", msg);

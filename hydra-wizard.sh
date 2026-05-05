@@ -35,10 +35,24 @@ test -n "$port" && ports="-s $port"
 test -n "$pw" && pws="-e $pw"
 test -n "$opt" && { opts="-m $opt" ; dopts="-m '$opt'" ; }
 
+# build a quoted argv so a prompted field with spaces or shell metachars
+# does not get word-split into extra hydra flags
+set --
+[ -n "$users"   ] && set -- "$@" $users
+[ -n "$passs"   ] && set -- "$@" $passs
+set -- "$@" -u
+[ -n "$pws"     ] && set -- "$@" $pws
+[ -n "$ports"   ] && set -- "$@" $ports
+[ -n "$opt"     ] && set -- "$@" -m "$opt"
+[ -n "$targets" ] && set -- "$@" $targets
+set -- "$@" "$service"
+
 echo The following command will be executed now:
-echo " hydra $users $passs -u $pws $ports $dopts $targets $service"
+printf '  hydra'
+for arg in "$@"; do printf ' %q' "$arg" 2>/dev/null || printf ' %s' "$arg"; done
+echo
 echo
 read -p "Do you want to run the command now? [Y/n] " yn
 test "$yn" = "n" -o "$yn" = "N" && { echo Exiting. ; exit 0 ; }
 echo
-hydra $users $passs -u $pws $ports $opts $targets $service
+hydra "$@"

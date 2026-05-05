@@ -324,7 +324,10 @@ void service_telnet(char *ip, int32_t sp, unsigned char options, char *miscptr, 
       /* Telnet option negotiation */
       do {
         unsigned char *buf2 = (unsigned char *)buf;
-        while (*buf2 == IAC) {
+        /* bound the 3-byte IAC walk against the actual line length so a
+         * server that stops 1-2 bytes mid-triple doesn't drag us OOB. */
+        size_t buf_len = buf ? strlen((char *)buf) : 0;
+        while (buf2 + 2 < (unsigned char *)buf + buf_len + 1 && *buf2 == IAC) {
           if (first == 0) {
             if (debug)
               hydra_report(stdout, "DEBUG: requested line mode\n");

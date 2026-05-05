@@ -79,6 +79,13 @@ int32_t start_http(int32_t s, char *ip, int32_t port, unsigned char options, cha
     char *pbuffer, *result;
 
     pbuffer = hydra_strcasestr(http_buf, "WWW-Authenticate: Digest ");
+    /* the success path (200 OK, no auth header) returns NULL here. */
+    if (pbuffer == NULL) {
+      http_auth_mechanism = AUTH_BASIC;
+      free(buffer);
+      free(header);
+      return 1;
+    }
     strncpy(buffer, pbuffer + strlen("WWW-Authenticate: Digest "), buffer_size - 1);
     buffer[buffer_size - 1] = '\0';
 

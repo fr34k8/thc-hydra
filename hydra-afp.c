@@ -43,6 +43,10 @@ static int32_t server_subconnect(struct afp_url url) {
   conn_req = malloc(sizeof(struct afp_connection_request));
   //  server = malloc(sizeof(struct afp_server));
 
+  if (conn_req == NULL) {
+    hydra_report(stderr, "[ERROR] AFP: out of memory\n");
+    return -1;
+  }
   memset(conn_req, 0, sizeof(struct afp_connection_request));
 
   conn_req->url = url;
@@ -94,7 +98,7 @@ int32_t start_afp(int32_t s, char *ip, int32_t port, unsigned char options, char
     pass = empty;
 
   strncpy(tmpurl.servername, hydra_address2string(ip), AFP_SERVER_NAME_LEN - 1);
-  tmpurl.servername[AFP_SERVER_NAME_LEN] = 0;
+  tmpurl.servername[AFP_SERVER_NAME_LEN - 1] = 0;
   strncpy(mlogin, login, AFP_MAX_USERNAME_LEN - 1);
   mlogin[AFP_MAX_USERNAME_LEN - 1] = 0;
   strncpy(mpass, pass, AFP_MAX_PASSWORD_LEN - 1);

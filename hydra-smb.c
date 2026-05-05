@@ -887,6 +887,13 @@ unsigned long SMBSessionSetup(int32_t s, char *szLogin, char *szPassword, char *
   int32_t ret;
   int32_t iByteCount = 0, iOffset = 0;
 
+  /* the UTF-16 expansion below roughly doubles strlen(szLogin); cap it
+   * against buf[512] minus the per-message overhead. */
+  if (szLogin != NULL && strlen(szLogin) > 96) {
+    fprintf(stderr, "[ERROR] SMB login too long (max 96 chars)\n");
+    return -1;
+  }
+
   if (accntFlag == 0) {
     strcpy((char *)workgroup, "localhost");
 
@@ -1191,10 +1198,10 @@ unsigned long SMBSessionSetup(int32_t s, char *szLogin, char *szPassword, char *
   /* Set native OS and LAN Manager values */
 
   char *szOSName = "Unix";
-  j = UTF8_UTF16LE((unsigned char *)szOSName, strlen(szOSName), buf + iOffset + iByteCount, 2 * sizeof(szOSName));
+  j = UTF8_UTF16LE((unsigned char *)szOSName, strlen(szOSName), buf + iOffset + iByteCount, 2 * strlen(szOSName));
   iByteCount += j + 2; // NULL terminated
   char *szLANMANName = "Samba";
-  j = UTF8_UTF16LE((unsigned char *)szLANMANName, strlen(szLANMANName), buf + iOffset + iByteCount, 2 * sizeof(szLANMANName));
+  j = UTF8_UTF16LE((unsigned char *)szLANMANName, strlen(szLANMANName), buf + iOffset + iByteCount, 2 * strlen(szLANMANName));
   iByteCount += j + 2; // NULL terminated
 
   /* Set the header length */
@@ -1211,8 +1218,11 @@ unsigned long SMBSessionSetup(int32_t s, char *szLogin, char *szPassword, char *
 
   hydra_send(s, (char *)buf, iOffset + iByteCount, 0);
 
+  /* the return value below indexes bufReceive[41]/[11]/[10]/[9] unconditionally,
+   * so require >= 42 bytes back; otherwise stack garbage parses as success. */
+  memset(bufReceive, 0, sizeof(bufReceive));
   nReceiveBufferSize = hydra_recv(s, bufReceive, sizeof(bufReceive));
-  if (/*bufReceive == NULL ||*/ nReceiveBufferSize == 0)
+  if (nReceiveBufferSize < 42)
     return -1;
 
   /* 41 - Action (Guest/Non-Guest Account) */

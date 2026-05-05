@@ -36,6 +36,11 @@ int32_t start_ldap(int32_t s, char *ip, int32_t port, unsigned char options, cha
   switch (ldap_auth_mechanism) {
   case AUTH_CLEAR:
     length = 14 + strlen(login) + strlen(pass);
+    /* the BIND length-prefix bytes are u8, so login/pass are each <= 255. */
+    if (length > sizeof(buffer) || strlen(login) > 255 || strlen(pass) > 255) {
+      hydra_completed_pair_skip();
+      return -1;
+    }
     break;
 #ifdef LIBOPENSSL
   case AUTH_CRAMMD5:

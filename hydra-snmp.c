@@ -138,13 +138,22 @@ void password_to_key_sha(u_char *password,   /* IN */
                          u_char *key) {      /* OUT - pointer to caller 20-octet buffer */
   SHA_CTX SH;
   u_char *cp, password_buf[80], *mypass = password, bpass[17];
-  u_long password_index = 0, count = 0, i, mylen = passwordlen, myelen = engineLength;
+  u_long password_index = 0, count = 0, i, mylen, myelen = engineLength;
+
+  /* mirror the MD5 sibling above: cap passwordlen against bpass[]. */
+  if (strlen((const char *)password) > passwordlen)
+    passwordlen = strlen((const char *)password);
+  if (passwordlen > sizeof(bpass) - 1)
+    passwordlen = sizeof(bpass) - 1;
+  mylen = passwordlen;
 
   if (mylen < 8) {
     memset(bpass, 0, sizeof(bpass));
-    strcpy(bpass, password);
+    strncpy((char *)bpass, (const char *)password, sizeof(bpass) - 1);
     while (mylen < 8) {
-      strcat(bpass, password);
+      if (strlen((const char *)bpass) + passwordlen >= sizeof(bpass))
+        break;
+      strncat((char *)bpass, (const char *)password, sizeof(bpass) - strlen((const char *)bpass) - 1);
       mylen += passwordlen;
     }
     mypass = bpass;

@@ -112,12 +112,13 @@ int32_t start_sip(int32_t s, char *ip, char *lip, int32_t port, int32_t lport, u
 #else
         if ((ptr = strstr(buf, "received="))) {
 #endif
-          strncpy(external_ip_addr, ptr + strlen("received="), sizeof(external_ip_addr));
-          external_ip_addr[sizeof(external_ip_addr) - 1] = '\0';
-          for (i = 0; i < strlen(external_ip_addr); i++) {
-            if (external_ip_addr[i] <= 32) {
-              external_ip_addr[i] = '\0';
-            }
+          {
+            const char *src = ptr + strlen("received=");
+            size_t k = 0;
+            while (k < sizeof(external_ip_addr) - 1 && src[k] > 32)
+              k++;
+            memcpy(external_ip_addr, src, k);
+            external_ip_addr[k] = 0;
           }
           if (verbose)
             hydra_report(stderr, "[VERBOSE] Will reconnect using external IP address %s\n", external_ip_addr);
@@ -294,7 +295,11 @@ char *get_iface_ip(uint64_t ip) {
     free(local);
     return NULL;
   }
-  char *str = malloc(sizeof(char) * (strlen(buff) + 1));
+  char *str = malloc(strlen(buff) + 1);
+  if (str == NULL) {
+    free(local);
+    return NULL;
+  }
 
   strcpy(str, buff);
   free(local);

@@ -40,8 +40,12 @@ int32_t start_cvs(int32_t s, char *ip, int32_t port, unsigned char options, char
   memset(pass2, 0, sizeof(pass2));
   strncpy(pass2, pass, 512);
 
+  /* key[] has 91 entries; pass chars outside [0x20, 0x7A] are out of range
+   * and would otherwise leak adjacent .rodata bytes via the encoded password. */
   for (i = 0; i < strlen(pass); i++) {
-    pass2[i] = key[pass2[i] - 0x20];
+    int idx = ((unsigned char)pass2[i]) - 0x20;
+    if (idx >= 0 && idx < (int)sizeof(key))
+      pass2[i] = key[idx];
   }
 
   snprintf(buffer, sizeof(buffer), "BEGIN VERIFICATION REQUEST\n%s\n%s\nA%s\nEND VERIFICATION REQUEST\n", directory, login, pass2);
@@ -54,6 +58,8 @@ int32_t start_cvs(int32_t s, char *ip, int32_t port, unsigned char options, char
 
   if (hydra_data_ready_timed(s, 5, 0) > 0) {
     buf = hydra_receive_line(s);
+    if (buf == NULL)
+      return 1;
     if (strstr(buf, "I LOVE YOU\n")) {
       hydra_report_found_host(port, ip, "cvs", fp);
       hydra_completed_pair_found();

@@ -180,6 +180,23 @@ int32_t service_ssh_init(char *ip, int32_t sp, unsigned char options, char *misc
   //   3 skip target because its unreachable
 #ifdef LIBSSH
   int32_t rc, method;
+  /* libssh < 0.10.6 has client-side parser CVEs (e.g. CVE-2025-4877) that
+   * fire on the server's response. Warn at runtime if linked against an
+   * old version. */
+  {
+    const char *vstr = ssh_version(0);
+    if (vstr != NULL) {
+      int maj = 0, min = 0, patch = 0;
+      if (sscanf(vstr, "%d.%d.%d", &maj, &min, &patch) >= 2) {
+        if (maj == 0 && (min < 10 || (min == 10 && patch < 6))) {
+          fprintf(stderr,
+                  "[WARNING] linked libssh %s is older than 0.10.6; client-side CVEs "
+                  "(e.g. CVE-2025-4877) may be triggered by a malicious target server.\n",
+                  vstr);
+        }
+      }
+    }
+  }
   ssh_init();
   ssh_session session = ssh_new();
 

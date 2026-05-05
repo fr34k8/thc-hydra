@@ -21,6 +21,10 @@ int32_t start_rsh(int32_t s, char *ip, int32_t port, unsigned char options, char
     login = empty;
 
   memset(buffer2, 0, sizeof(buffer2));
+  if (1 + strlen(login) + 1 + strlen(login) + 1 + strlen(COMMAND) + 1 > sizeof(buffer2)) {
+    hydra_completed_pair_skip();
+    return 4;
+  }
   bptr++;
 
   strcpy(bptr, login);

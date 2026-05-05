@@ -127,8 +127,14 @@ int32_t start_pcanywhere(int32_t s, char *ip, int32_t port, unsigned char option
 
   /*printf("testing %s:%s\n",login,pass); */
 
-  strcpy(clogin, login);
-  strcpy(cpass, pass);
+  if (strlen(login) >= sizeof(clogin) || strlen(pass) >= sizeof(cpass)) {
+    hydra_completed_pair_skip();
+    return 1;
+  }
+  strncpy(clogin, login, sizeof(clogin) - 1);
+  clogin[sizeof(clogin) - 1] = 0;
+  strncpy(cpass, pass, sizeof(cpass) - 1);
+  cpass[sizeof(cpass) - 1] = 0;
 
   pca_encrypt(clogin);
   pca_encrypt(cpass);

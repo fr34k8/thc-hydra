@@ -17,10 +17,9 @@ char *smtp_read_server_capacity(int32_t sock) {
       if (isdigit((int32_t)buf[0]) && buf[3] == ' ')
         resp = 1;
       else {
-        if (buf[strlen(buf) - 1] == '\n')
-          buf[strlen(buf) - 1] = 0;
-        if (buf[strlen(buf) - 1] == '\r')
-          buf[strlen(buf) - 1] = 0;
+        size_t blen = strlen(buf);
+        while (blen > 0 && (buf[blen - 1] == '\n' || buf[blen - 1] == '\r'))
+          buf[--blen] = 0;
 #ifdef NO_STRRCHR
         if ((ptr = rindex(buf, '\n')) != NULL) {
 #else
@@ -317,10 +316,12 @@ void service_smtp(char *ip, int32_t sp, unsigned char options, char *miscptr, FI
         free(buf);
         hydra_child_exit(2);
       }
-      while (strstr(buf, "220 ") == NULL) {
+      while (buf != NULL && strstr(buf, "220 ") == NULL) {
         free(buf);
         buf = hydra_receive_line(sock);
       }
+      if (buf == NULL)
+        hydra_child_exit(2);
       free(buf);
 
       /* send ehlo and receive/ignore reply */
@@ -347,7 +348,7 @@ void service_smtp(char *ip, int32_t sp, unsigned char options, char *miscptr, FI
             hydra_send(sock, "STARTTLS\r\n", strlen("STARTTLS\r\n"), 0);
             free(buf);
             buf = hydra_receive_line(sock);
-            if (buf[0] != '2') {
+            if (buf == NULL || buf[0] != '2') {
               hydra_report(stderr, "[ERROR] TLS negotiation failed, no answer "
                                    "received from STARTTLS request\n");
             } else {
