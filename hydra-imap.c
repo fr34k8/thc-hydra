@@ -167,6 +167,14 @@ int32_t start_imap(int32_t s, char *ip, int32_t port, unsigned char options, cha
       return 3;
     }
 
+    /* Need at least the "+ " continuation prefix plus one base64 byte; without
+     * this guard a single-byte server reply would make `buf + 2` read past the
+     * heap allocation. */
+    if (strlen(buf) < 4) {
+      free(buf);
+      free(preplogin);
+      return 3;
+    }
     memset(buffer, 0, sizeof(buffer));
     if (from64tobits_n((char *)buffer, buf + 2, sizeof(buffer)) < 0) {
       hydra_report(stderr, "[ERROR] IMAP CRAM-* AUTH: oversized challenge\n");
@@ -219,9 +227,13 @@ int32_t start_imap(int32_t s, char *ip, int32_t port, unsigned char options, cha
       free(buf);
       return 3;
     }
+    /* Skip the IMAP "+ " continuation prefix; require at least 4 bytes
+     * before reading buf + 2. */
+    if (strlen(buf) < 4) {
+      free(buf);
+      return 3;
+    }
     memset(buffer, 0, sizeof(buffer));
-    /* skip the IMAP "+ " continuation prefix, matching the other base64
-     * call sites in this file. */
     if (from64tobits_n((char *)buffer, buf + 2, sizeof(buffer)) < 0) {
       hydra_report(stderr, "[ERROR] IMAP DIGEST-MD5 AUTH: oversized challenge\n");
       free(buf);
@@ -284,6 +296,10 @@ int32_t start_imap(int32_t s, char *ip, int32_t port, unsigned char options, cha
       return 1;
     } else {
       /* recover server challenge */
+      if (strlen(buf) < 4) {
+        free(buf);
+        return 1;
+      }
       memset(buffer, 0, sizeof(buffer));
       //+ cj1oeWRyYU9VNVZqcHQ5RjNqcmVXRVFWTCxzPWhGbTNnRGw0akdidzJVVHosaT00MDk2
       if (from64tobits_n((char *)buffer, buf + 2, sizeof(buffer)) < 0) {

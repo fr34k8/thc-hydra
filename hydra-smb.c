@@ -777,7 +777,9 @@ int32_t SMBNegProt(int32_t s) {
 
   hydra_send(s, (char *)buf, iLength, 0);
   k = hydra_recv(s, (char *)rbuf, sizeof(rbuf));
-  if (k == 0)
+  /* hydra_recv returns int32_t; refuse negative (error) and short (< 42) replies
+   * before indexing rbuf[39] / iResponseOffset+8+32 below. */
+  if (k <= 0 || k < iResponseOffset + 8 + 32)
     return 3;
 
   /* retrieve the security mode */
@@ -1211,8 +1213,9 @@ unsigned long SMBSessionSetup(int32_t s, char *szLogin, char *szPassword, char *
   if (verbose)
     hydra_report(stderr, "[VERBOSE] Set NBSS header length: %2.2X\n", buf[3]);
 
-  /* Set data byte count */
-  buf[iOffset - 2] = iByteCount;
+  /* Set data byte count: SMB1 BCC is a 16-bit little-endian field. */
+  buf[iOffset - 2] = iByteCount % 256;
+  buf[iOffset - 1] = iByteCount / 256;
   if (verbose)
     hydra_report(stderr, "[VERBOSE] Set byte count: %2.2X\n", buf[57]);
 

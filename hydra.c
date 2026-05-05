@@ -442,7 +442,7 @@ static const struct {
                 SERVICE(rpcap),
                 SERVICE3("s7-300", s7_300),
 #ifdef LIBSAPR3
-                SERVICE3("sarp3", sapr3),
+                SERVICE3("sapr3", sapr3),
 #endif
 #ifdef LIBOPENSSL
                 SERVICE(sip),
@@ -703,13 +703,23 @@ void hydra_restore_write(int32_t print_msg) {
     return;
   }
 
-  /* 0600 + O_NOFOLLOW: the restore file holds credential state. */
+  /* 0600 + O_NOFOLLOW: the restore file holds credential state. mode-0600 only
+   * applies on create, so refuse to reuse a pre-existing file the caller does
+   * not own or that has g/o permissions set. */
   {
     int rfd = open(RESTOREFILE, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
     if (rfd < 0) {
       fprintf(stderr, "[ERROR] could not open restore file (%s) for writing - ", RESTOREFILE);
       perror("");
       return;
+    }
+    {
+      struct stat wst;
+      if (fstat(rfd, &wst) != 0 || !S_ISREG(wst.st_mode) || wst.st_uid != geteuid() || (wst.st_mode & 0077) != 0) {
+        fprintf(stderr, "[ERROR] refusing to write restore file (%s): not a regular file owned by us with mode 0600\n", RESTOREFILE);
+        close(rfd);
+        return;
+      }
     }
     f = fdopen(rfd, "w");
   }
@@ -965,6 +975,16 @@ void hydra_restore_read() {
       exit(-1);
     }
     fck = (int32_t)fread(hydra_targets[j], sizeof(hydra_target), 1, f);
+    /* The struct contains pointer fields read straight off disk. Each one
+     * that is later dereferenced must be re-initialised; otherwise a crafted
+     * restore file aims wild pointers into the controller. */
+    hydra_targets[j]->target = NULL;
+    hydra_targets[j]->miscptr = NULL;
+    hydra_targets[j]->login_ptr = NULL;
+    hydra_targets[j]->pass_ptr = NULL;
+    memset(hydra_targets[j]->redo_login, 0, sizeof(hydra_targets[j]->redo_login));
+    memset(hydra_targets[j]->redo_pass, 0, sizeof(hydra_targets[j]->redo_pass));
+    memset(hydra_targets[j]->skiplogin, 0, sizeof(hydra_targets[j]->skiplogin));
     /* redo_login/redo_pass are sized MAXTASKS*2+2; skiplogin is sized SKIPLOGIN. */
     if (hydra_targets[j]->redo < 0 || hydra_targets[j]->redo > MAXTASKS * 2 + 2) {
       fprintf(stderr, "[ERROR] restore file target %d redo count out of range (%d)\n", j, hydra_targets[j]->redo);
@@ -3327,8 +3347,9 @@ int main(int argc, char *argv[]) {
       if (hydra_options.miscptr == NULL) {
         fprintf(stderr, "[WARNING] You must supply the web page as an "
                         "additional option or via -m, default path set to /\n");
-        hydra_options.miscptr = malloc(2);
-        hydra_options.miscptr = "/";
+        hydra_options.miscptr = strdup("/");
+        if (hydra_options.miscptr == NULL)
+          bail("Out of memory while setting default path");
       }
       if (*hydra_options.miscptr != '/' && strstr(hydra_options.miscptr, "://") == NULL)
         bail("The web page you supplied must start with a \"/\", \"http://\" "
@@ -3368,8 +3389,9 @@ int main(int argc, char *argv[]) {
         if (hydra_options.miscptr == NULL) {
           fprintf(stderr, "[WARNING] You must supply the web page as an "
                           "additional option or via -m, default path set to /\n");
-          hydra_options.miscptr = malloc(2);
-          hydra_options.miscptr = "/";
+          hydra_options.miscptr = strdup("/");
+          if (hydra_options.miscptr == NULL)
+            bail("Out of memory while setting default path");
         }
         // if (*hydra_options.miscptr != '/' && strstr(hydra_options.miscptr,
         // "://") == NULL)
@@ -4365,7 +4387,13 @@ int main(int argc, char *argv[]) {
                 if (hydra_targets[hydra_heads[head_no]->target_no]->fail_count > 0)
                   hydra_targets[hydra_heads[head_no]->target_no]->fail_count--;
                 memset(buf, 0, sizeof(buf));
-                read_safe(hydra_heads[head_no]->sp[0], buf, MAXBUF);
+                {
+                  ssize_t r = read_safe(hydra_heads[head_no]->sp[0], buf, sizeof(buf) - 1);
+                  if (r > 0 && (size_t)r <= sizeof(buf) - 1)
+                    buf[r] = 0;
+                  else
+                    buf[0] = 0;
+                }
                 hydra_skip_user(hydra_heads[head_no]->target_no, buf);
                 fck = write(hydra_heads[head_no]->sp[1], "n", 1); // small hack
                 break;

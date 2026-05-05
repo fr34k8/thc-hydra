@@ -627,6 +627,13 @@ char *sasl_scram_sha1(char *result, char *pass, char *clientfirstmessagebare, ch
   // continue to search from the previous successful call
   salt = strtok(NULL, ",");
   ic = strtok(NULL, ",");
+  /* The server-first-message must contain three comma-separated tokens; a
+   * truncated reply leaves ic == NULL and `ic + 2` would be (char *)0x2. */
+  if (ic == NULL || strlen(ic) < 3) {
+    hydra_report(stderr, "Error: malformed SCRAM server response\n");
+    free(preppasswd);
+    return NULL;
+  }
   iter = atoi(ic + 2);
   if (iter == 0) {
     hydra_report(stderr, "Error: Can't understand server response\n");

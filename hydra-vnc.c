@@ -118,10 +118,12 @@ int32_t start_vnc(int32_t s, char *ip, int32_t port, unsigned char options, char
     hydra_child_exit(2);
   }
 
-  // check security result value
-  recv(s, buf, 4, 0);
-  if (buf == NULL)
-    return 1;
+  // check security result value: require all 4 bytes before classifying.
+  {
+    int32_t r = (int32_t)recv(s, buf, 4, 0);
+    if (r < 4)
+      return 1;
+  }
 
   switch (buf[3]) {
   case 0x0:

@@ -83,8 +83,9 @@ int32_t start_rdp(char *ip, int32_t port, unsigned char options, char *miscptr, 
     hydra_completed_pair();
     break;
   case 0x0002000f:
-    // login failure
-    hydra_completed_pair_skip();
+    /* ERRCONNECT_LOGON_FAILURE = wrong credentials. Keep trying other
+     * passwords for this user instead of skipping the user entirely. */
+    hydra_completed_pair();
     break;
   case 0x0002000d:
     hydra_report(stderr,

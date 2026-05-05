@@ -128,10 +128,16 @@ int main(int argc, char *argv[]) {
     int is_low = 0, is_up = 0, is_no = 0, is_print = 0, is_other = 0;
     if (!buf[0])
       continue;
-    if (buf[strlen(buf) - 1] == '\n')
-      buf[strlen(buf) - 1] = 0;
-    if (buf[strlen(buf) - 1] == '\r')
-      buf[strlen(buf) - 1] = 0;
+    /* Bound the index by the current length so that stripping a trailing
+     * '\n' followed by a stripped '\r' on a now-empty line does not read or
+     * write at buf[-1]. */
+    {
+      size_t l = strlen((char *)buf);
+      if (l > 0 && buf[l - 1] == '\n')
+        buf[--l] = 0;
+      if (l > 0 && buf[l - 1] == '\r')
+        buf[--l] = 0;
+    }
     if (strlen(buf) >= minlen && strlen(buf) <= maxlen) {
       i = 0;
       j = 1;

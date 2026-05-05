@@ -96,8 +96,13 @@ void password_to_key_md5(u_char *password,   /* IN */
   if (mylen < 8) {
     memset(bpass, 0, sizeof(bpass));
     strncpy(bpass, password, sizeof(bpass) - 1);
+    /* An empty password makes the loop unable to advance — bail before that. */
+    if (passwordlen == 0)
+      mylen = 8;
     while (mylen < 8) {
-      strcat(bpass, password);
+      if (strlen(bpass) + passwordlen >= sizeof(bpass))
+        break;
+      strncat(bpass, password, sizeof(bpass) - strlen(bpass) - 1);
       mylen += passwordlen;
     }
     mypass = bpass;
@@ -150,6 +155,9 @@ void password_to_key_sha(u_char *password,   /* IN */
   if (mylen < 8) {
     memset(bpass, 0, sizeof(bpass));
     strncpy((char *)bpass, (const char *)password, sizeof(bpass) - 1);
+    /* An empty password makes the loop unable to advance — bail before that. */
+    if (passwordlen == 0)
+      mylen = 8;
     while (mylen < 8) {
       if (strlen((const char *)bpass) + passwordlen >= sizeof(bpass))
         break;

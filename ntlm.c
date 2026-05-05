@@ -1109,9 +1109,13 @@ Contributed LGPL versions of some of the GPL'd Samba files.
  * in the structures probably needs to be designed
  */
 
+/* Callers cast a 4096-byte stack buffer onto these structs; refuse writes
+ * past the struct's declared 1024-byte buffer to prevent server-driven
+ * overflow when uDomain/uUser/uWks etc. are very long. */
+#define NTLM_BUF_MAX 1024
 #define AddBytes(ptr, header, buf, count)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      \
   {                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            \
-    if (buf != NULL && count != 0) {                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           \
+    if (buf != NULL && count != 0 && (uint32_t)(count) <= (uint32_t)NTLM_BUF_MAX && ptr->bufIndex <= (uint32_t)(NTLM_BUF_MAX - (count))) {                                                                                                                                                                                                                                                                                                                                                                                     \
       SSVAL(&ptr->header.len, 0, count);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       \
       SSVAL(&ptr->header.maxlen, 0, count);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    \
       SIVAL(&ptr->header.offset, 0, ((ptr->buffer - ((uint8 *)ptr)) + ptr->bufIndex));                                                                                                                                                                                                                                                                                                                                                                                                                                         \
@@ -1132,6 +1136,8 @@ Contributed LGPL versions of some of the GPL'd Samba files.
     AddBytes(ptr, header, ((unsigned char *)p), len);                                                                                                                                                                                                                                                                                                                                                                                                                                                                          \
   }
 
+/* Keep `len` in sync with the internal cap inside strToUnicode so that
+ * AddBytes does not memcpy past the bytes strToUnicode actually wrote. */
 #define AddUnicodeString(ptr, header, string)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  \
   {                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            \
     char *p = string;                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          \
@@ -1139,6 +1145,8 @@ Contributed LGPL versions of some of the GPL'd Samba files.
     int32_t len = 0;                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           \
     if (p) {                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   \
       len = strlen(p);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         \
+      if (len > NTLM_BUF_MAX / 2)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              \
+        len = NTLM_BUF_MAX / 2;                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                \
       b = strToUnicode(p);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     \
     }                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          \
     AddBytes(ptr, header, b, len * 2);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         \
@@ -1197,6 +1205,9 @@ static unsigned char *strToUnicode(char *p) {
   if (l * 2 >= sizeof buf)
     l = (sizeof buf - 1) / 2;
 
+  /* Clear stale bytes from a prior call so a server-controlled length cannot
+   * make the caller transmit content from a previous credential attempt. */
+  memset(buf, 0, sizeof buf);
   while (l--) {
     buf[i++] = *p++;
     buf[i++] = 0;
@@ -1241,10 +1252,12 @@ void buildAuthRequest(tSmbNtlmAuthRequest *request, long flags, char *host, char
   SIVAL(&request->msgType, 0, 1);
   SIVAL(&request->flags, 0, flags);
 
-  assert(strlen(host) < 128);
+  /* Runtime caps: assert is a no-op under -DNDEBUG. */
+  if (host != NULL && strlen(h) >= 128)
+    h[127] = '\0';
   AddString(request, host, h);
-  assert(strlen(domain) < 128);
-  AddString(request, domain, domain);
+  if (domain != NULL && strlen(domain) < 128)
+    AddString(request, domain, domain);
   free(h);
 }
 
@@ -1279,11 +1292,16 @@ void buildAuthResponse(tSmbNtlmAuthChallenge *challenge, tSmbNtlmAuthResponse *r
   AddBytes(response, lmResponse, lmRespData, 24);
   AddBytes(response, ntResponse, ntRespData, 24);
 
-  assert(strlen(domain) < 128);
+  /* Runtime caps: assert is a no-op under -DNDEBUG. Domain comes from the
+   * server-controlled challenge; user/host come from operator argv. */
+  if (domain != NULL && strlen(domain) >= 128)
+    domain[127] = '\0';
   AddUnicodeString(response, uDomain, domain);
-  assert(strlen(u) < 128);
+  if (u != NULL && strlen(u) >= 128)
+    u[127] = '\0';
   AddUnicodeString(response, uUser, u);
-  assert(strlen(w) < 128);
+  if (w != NULL && strlen(w) >= 128)
+    w[127] = '\0';
   AddUnicodeString(response, uWks, w);
 
   AddString(response, sessionKey, NULL);

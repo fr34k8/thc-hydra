@@ -108,8 +108,12 @@ static int32_t hydra_recv_proxy_line(int32_t socket, char *buf, size_t size, lon
       break;
 
     ret = internal__hydra_recv(socket, buf + got, 1);
-    if (ret <= 0)
+    if (ret <= 0) {
+      /* NUL-terminate partial buffer so callers may safely use strchr/strstr
+       * without walking heap past the bytes the proxy actually delivered. */
+      buf[got] = 0;
       return got > 0 ? (int32_t)got : ret;
+    }
 
     got += ret;
     if (buf[got - 1] == '\n')
@@ -1126,9 +1130,33 @@ char *hydra_strrep(char *string, char *oldpiece, char *newpiece) {
   char *c, oldstring[6096],
       newstring[6096]; // updated due to issue 192 on github.
   static char finalstring[6096];
+  size_t old_l, new_l, in_l, match_count = 0;
 
-  if (string == NULL || oldpiece == NULL || newpiece == NULL || strlen(string) >= sizeof(oldstring) - 1 || (strlen(string) + strlen(newpiece) - strlen(oldpiece) >= sizeof(newstring) - 1 && strlen(string) > strlen(oldpiece)))
+  if (string == NULL || oldpiece == NULL || newpiece == NULL || strlen(string) >= sizeof(oldstring) - 1)
     return NULL;
+  /* An empty needle would make strstr always match without advancing str_index,
+   * looping forever and overflowing newstring. */
+  if (oldpiece[0] == 0)
+    return NULL;
+
+  /* The original guard only modelled a single substitution. With many
+   * occurrences and new_len > old_len, the cumulative growth can far exceed
+   * the buffer; count matches up front and refuse if the result would not fit. */
+  in_l = strlen(string);
+  old_l = strlen(oldpiece);
+  new_l = strlen(newpiece);
+  {
+    char *p = string;
+    while ((p = strstr(p, oldpiece)) != NULL) {
+      match_count++;
+      p += old_l;
+    }
+  }
+  if (new_l > old_l) {
+    size_t growth_per = new_l - old_l;
+    if (match_count > (sizeof(newstring) - 1 - in_l) / (growth_per ? growth_per : 1))
+      return NULL;
+  }
 
   if (strlen(string) > 6000) {
     hydra_report(stderr, "[ERROR] Supplied URL or POST data too large. Max "
@@ -1209,7 +1237,8 @@ void hydra_tobase64(unsigned char *buf, uint32_t buflen, uint32_t bufsize) {
     big[2] = hydra_conv64(((*(ptr + 1) & 15) << 2) + (*(ptr + 2) >> 6));
     big[3] = hydra_conv64(*(ptr + 2) & 63);
     len += strlen((char *)big);
-    if (len > bufsize) {
+    /* Reserve room for the trailing NUL strcat appends. */
+    if (len + 1 > bufsize) {
       buf[0] = 0;
       return;
     }
@@ -1231,6 +1260,10 @@ void hydra_tobase64(unsigned char *buf, uint32_t buflen, uint32_t bufsize) {
     if (small[1] == 0)
       big[2] = '=';
     big[3] = '=';
+    if (len + strlen((char *)big) + 1 > bufsize) {
+      buf[0] = 0;
+      return;
+    }
     strcat((char *)bof, (char *)big);
   }
 
