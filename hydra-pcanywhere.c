@@ -202,11 +202,10 @@ int32_t start_pcanywhere(int32_t s, char *ip, int32_t port, unsigned char option
     return 1;
   }
 
-  ret = hydra_recv(s, buffer, sizeof(buffer));
+  ret = hydra_recv(s, buffer, sizeof(buffer) - 1);
   if (ret < 0)
     return 1;
-  else
-    buffer[ret] = 0;
+  buffer[ret] = 0;
 
   clean_buffer(buffer, ret);
   /*show_buffer(buffer,ret); */

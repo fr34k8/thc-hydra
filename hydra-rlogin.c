@@ -56,7 +56,11 @@ int32_t start_rlogin(int32_t s, char *ip, int32_t port, unsigned char options, c
   if (ret > 0 && (strstr(buffer, "ssword") != NULL)) {
     if (strlen((pass = hydra_get_next_password())) == 0)
       pass = empty;
-    sprintf(buffer2, "%s\r", pass);
+    if (strlen(pass) + 2 > sizeof(buffer2)) {
+      hydra_completed_pair_skip();
+      return 1;
+    }
+    snprintf(buffer2, sizeof(buffer2), "%s\r", pass);
     if (hydra_send(s, buffer2, 1 + strlen(pass), 0) < 0) {
       return 1;
     }
