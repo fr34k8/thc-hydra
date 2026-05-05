@@ -1231,6 +1231,7 @@ int32_t start_http_form(int32_t s, char *ip, int32_t port, unsigned char options
       }
       if (str3[0] != '/') {
         j = strlen(str3);
+        if (j > sizeof(str3) - 2) j = sizeof(str3) - 2;
         str3[j + 1] = 0;
         for (i = j; i > 0; i--)
           str3[i] = str3[i - 1];
