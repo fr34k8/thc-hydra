@@ -156,7 +156,7 @@ SDK_PATH=""
 if [ "$SYSS" = "Darwin" -a ! -d "/usr/include" ]; then
   SDK_PATH=`xcrun --show-sdk-path`
 fi
-LIBDIRS=`cat /etc/ld.so.conf /etc/ld.so.conf.d/* 2> /dev/null | grep -v '^#' | sort | uniq`
+LIBDIRS="$LIBDIRS `cat /etc/ld.so.conf /etc/ld.so.conf.d/* 2> /dev/null | grep -v '^#' | sort | uniq`"
 if [ "$SIXFOUR" = "64" ]; then
   LIBDIRS="$LIBDIRS /lib64 /usr/lib64 /usr/local/lib64 /opt/local/lib64"
 fi
@@ -164,7 +164,7 @@ if [ -d "/Library/Developer/CommandLineTools/usr/lib" ]; then
   LIBDIRS="$LIBDIRS /Library/Developer/CommandLineTools/usr/lib /Library/Developer/CommandLineTools/lib"
 fi
 LIBDIRS="$LIBDIRS /lib /usr/lib /usr/local/lib /opt/local/lib /mingw64/lib /mingw64/bin"
-INCDIRS="$SDK_PATH/usr/include /usr/local/include /opt/include /opt/local/include /mingw64/include"
+INCDIRS="$INCDIRS $SDK_PATH/usr/include /usr/local/include /opt/include /opt/local/include /mingw64/include"
 
 if [ "$SYSS" = "Darwin" ]; then
   # 1. Add standard Homebrew paths for ARM/Intel
